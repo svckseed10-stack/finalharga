@@ -137,6 +137,7 @@ function formatNumber(n) {
   return n.toLocaleString("id-ID");
 }
 
+// Hitung profit
 function hitungProfit(sellingRate, buyingRate) {
     const jumlahGram = nilaiEmas / buyingRate;
     const totalJual = jumlahGram * sellingRate;
@@ -145,6 +146,7 @@ function hitungProfit(sellingRate, buyingRate) {
     return { profitRupiah, profitGram, jumlahGram };
 }
 
+// Update UI profit dengan 4 desimal
 function updateProfitUI(sellingRate, buyingRate) {
     if (lastSellingRate !== null && lastSellingRate === sellingRate) return;
 
@@ -155,8 +157,8 @@ function updateProfitUI(sellingRate, buyingRate) {
     if (profitRupiah > 0) color = "green";
     else if (profitRupiah < 0) color = "red";
 
-    profitEl.innerHTML = `Profit: <span class="${color}">Rp ${profitRupiah.toLocaleString("id-ID")} (${profitGram.toFixed(3)} gr)</span><br>
-                          Jumlah Emas: ${jumlahGram.toFixed(3)} gr`;
+    profitEl.innerHTML = `Profit: <span class="${color}">Rp ${profitRupiah.toLocaleString("id-ID")} (${profitGram.toFixed(4)} gr)</span><br>
+                          Jumlah Emas: ${jumlahGram.toFixed(4)} gr`;
 
     lastSellingRate = sellingRate;
 }
