@@ -26,63 +26,24 @@
     border: 1px solid #222;
   }
 
-  h1 {
-    font-size: 18px;
-    margin: 0 0 10px 0;
-    text-align: center;
-  }
-
-  .time {
-    text-align: center;
-    color: #bbb;
-    font-size: 13px;
-    margin-bottom: 12px;
-  }
-
-  .row {
-    margin: 12px 0;
-  }
-
-  .label {
-    color: #aaa;
-    font-size: 13px;
-  }
-
-  .value {
-    font-size: 22px;
-    font-weight: 700;
-  }
-
-  .diff {
-    font-size: 12px;
-    margin-top: 4px;
-  }
-
+  h1 { font-size: 18px; margin: 0 0 10px 0; text-align: center; }
+  .time { text-align: center; color: #bbb; font-size: 13px; margin-bottom: 12px; }
+  .row { margin: 12px 0; }
+  .label { color: #aaa; font-size: 13px; }
+  .value { font-size: 22px; font-weight: 700; }
+  .diff { font-size: 12px; margin-top: 4px; }
+  .profit { font-size: 16px; margin-top: 4px; text-align: center; font-weight: 600; }
   .green { color: #4caf50; }
   .red { color: #ff6b6b; }
   .neutral { color: #999; }
-
-  .fade {
-    animation: pulse 0.25s ease-out;
-  }
-
-  @keyframes pulse {
-    from { transform: scale(1.06); opacity: .2 }
-    to   { transform: scale(1); opacity: 1 }
-  }
-
-  #spread {
-    margin-top: 14px;
-    color: #f0e68c;
-    font-weight: 600;
-    text-align: center;
-  }
+  .fade { animation: pulse 0.25s ease-out; }
+  @keyframes pulse { from { transform: scale(1.06); opacity: .2 } to { transform: scale(1); opacity: 1 } }
+  #spread { margin-top: 14px; color: #f0e68c; font-weight: 600; text-align: center; }
 </style>
 </head>
 
 <body>
 <div class="card">
-
   <h1>Realtime Gold Price</h1>
   <div id="time" class="time">--:--:--</div>
 
@@ -90,16 +51,17 @@
     <div class="label">Buying Rate</div>
     <div id="buy" class="value">Loading...</div>
     <div id="buyDiff" class="diff neutral">(0)</div>
+    <div id="buyProfit" class="profit">Profit: -</div>
   </div>
 
   <div class="row">
     <div class="label">Selling Rate</div>
     <div id="sell" class="value">Loading...</div>
     <div id="sellDiff" class="diff neutral">(0)</div>
+    <div id="sellProfit" class="profit">Profit: -</div>
   </div>
 
   <div id="spread">Spread: -</div>
-
 </div>
 
 <script>
@@ -108,21 +70,19 @@ let lastSell = null;
 let lastBuyDiff = 0;
 let lastSellDiff = 0;
 
-let fastFetchCount = 0;
-const FAST_FETCH_LIMIT = 5; // Burst 0.5 detik
-const BURST_INTERVAL = 500; // 0.5 detik
-const NORMAL_INTERVAL = 5000; // 5 detik setelah burst
+// Modal & diskon
+const MODAL = 20000000;
+const DISKON = 685000;
+const MODAL_EFEKTIF = MODAL - DISKON;
 
-let requestId = 0; // Untuk menghindari race condition
+// Request control
+let requestId = 0;
 
-// Jam WIB realtime tiap detik
+// Format waktu WIB
 setInterval(() => {
   document.getElementById("time").innerText = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-    timeZone: "Asia/Jakarta"
+    hour: "numeric", minute: "2-digit", second: "2-digit",
+    hour12: true, timeZone: "Asia/Jakarta"
   }).format(new Date());
 }, 1000);
 
@@ -130,78 +90,102 @@ function formatNumber(n) {
   return n.toLocaleString("id-ID");
 }
 
-// Fetch & update harga dengan race condition safety
-async function fetchAndUpdate(currentRequestId) {
+function calculateProfit(harga) {
+  return harga - MODAL_EFEKTIF;
+}
+
+function updateProfitDisplay(buyingRate, sellingRate) {
+  const buyProfitRupiah = calculateProfit(buyingRate);
+  const sellProfitRupiah = calculateProfit(sellingRate);
+
+  const buyProfitGram = buyingRate ? buyProfitRupiah / buyingRate : 0;
+  const sellProfitGram = sellingRate ? sellProfitRupiah / sellingRate : 0;
+
+  const buyProfitEl = document.getElementById("buyProfit");
+  const sellProfitEl = document.getElementById("sellProfit");
+
+  buyProfitEl.innerText = `Profit: Rp ${buyProfitRupiah.toLocaleString("id-ID")} (${buyProfitGram.toFixed(2)} gr)`;
+  sellProfitEl.innerText = `Profit: Rp ${sellProfitRupiah.toLocaleString("id-ID")} (${sellProfitGram.toFixed(2)} gr)`;
+
+  buyProfitEl.style.color = buyProfitRupiah >= 0 ? "#4caf50" : "#ff6b6b";
+  sellProfitEl.style.color = sellProfitRupiah >= 0 ? "#4caf50" : "#ff6b6b";
+}
+
+async function fetchPrice(currentRequestId) {
   try {
     const res = await fetch("/api/gold");
     const data = await res.json();
 
-    // Abaikan response jika ada request lebih baru
+    // race-safe: abaikan request lama
     if (currentRequestId < requestId) return;
 
     const buy = parseFloat(data.buying_rate);
     const sell = parseFloat(data.selling_rate);
 
-    // Jika harga tidak berubah, abaikan update
-    if (lastBuy === buy && lastSell === sell) return;
-
     const buyEl = document.getElementById("buy");
     const buyDiffEl = document.getElementById("buyDiff");
-    buyEl.classList.remove("green", "red", "fade");
+    buyEl.classList.remove("green","red","fade");
 
     const sellEl = document.getElementById("sell");
     const sellDiffEl = document.getElementById("sellDiff");
-    sellEl.classList.remove("green", "red", "fade");
+    sellEl.classList.remove("green","red","fade");
 
-    // ===== BUY =====
-    if (lastBuy !== null && buy !== lastBuy) {
+    // ==== BUY ====
+    if(lastBuy!==null && buy!==lastBuy){
       const diff = buy - lastBuy;
       lastBuyDiff = diff;
-      if (diff > 0) buyEl.classList.add("green", "fade");
-      else if (diff < 0) buyEl.classList.add("red", "fade");
+      if(diff>0) buyEl.classList.add("green","fade");
+      else if(diff<0) buyEl.classList.add("red","fade");
     }
-    if (lastBuyDiff > 0) buyDiffEl.innerHTML = `<span class="green">⬆ +${formatNumber(lastBuyDiff)}</span>`;
-    else if (lastBuyDiff < 0) buyDiffEl.innerHTML = `<span class="red">⬇ ${formatNumber(lastBuyDiff)}</span>`;
-    else buyDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
+    buyDiffEl.innerHTML = lastBuyDiff>0 ? `<span class="green">⬆ +${formatNumber(lastBuyDiff)}</span>` :
+                        lastBuyDiff<0 ? `<span class="red">⬇ ${formatNumber(lastBuyDiff)}</span>` :
+                        `<span class="neutral">(0)</span>`;
     buyEl.innerText = formatNumber(buy);
 
-    // ===== SELL =====
-    if (lastSell !== null && sell !== lastSell) {
+    // ==== SELL ====
+    if(lastSell!==null && sell!==lastSell){
       const diff = sell - lastSell;
       lastSellDiff = diff;
-      if (diff > 0) sellEl.classList.add("green", "fade");
-      else if (diff < 0) sellEl.classList.add("red", "fade");
+      if(diff>0) sellEl.classList.add("green","fade");
+      else if(diff<0) sellEl.classList.add("red","fade");
     }
-    if (lastSellDiff > 0) sellDiffEl.innerHTML = `<span class="green">⬆ +${formatNumber(lastSellDiff)}</span>`;
-    else if (lastSellDiff < 0) sellDiffEl.innerHTML = `<span class="red">⬇ ${formatNumber(lastSellDiff)}</span>`;
-    else sellDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
+    sellDiffEl.innerHTML = lastSellDiff>0 ? `<span class="green">⬆ +${formatNumber(lastSellDiff)}</span>` :
+                         lastSellDiff<0 ? `<span class="red">⬇ ${formatNumber(lastSellDiff)}</span>` :
+                         `<span class="neutral">(0)</span>`;
     sellEl.innerText = formatNumber(sell);
 
-    // ===== SPREAD =====
-    document.getElementById("spread").innerText = "Spread: " + formatNumber(buy - sell);
+    // ==== Spread ====
+    document.getElementById("spread").innerText = "Spread: "+formatNumber(buy-sell);
+
+    // ==== Profit ====
+    updateProfitDisplay(buy, sell);
 
     lastBuy = buy;
     lastSell = sell;
-
-  } catch (err) {
-    console.error("Fetch error:", err);
+  } catch(err){
+    console.error(err);
   }
 }
 
-// Non-blocking polling dengan race condition protection
-function startPolling() {
-  requestId++; // ID unik setiap polling
-  fetchAndUpdate(requestId);
-
-  fastFetchCount++;
-  let nextInterval = (fastFetchCount <= FAST_FETCH_LIMIT) ? BURST_INTERVAL : NORMAL_INTERVAL;
-
-  setTimeout(startPolling, nextInterval);
+// Burst fetch 0.5s × 5 kali, kemudian 5s normal
+function startFetchLoop() {
+  let burstCount = 0;
+  const burstInterval = setInterval(()=>{
+    requestId++;
+    fetchPrice(requestId);
+    burstCount++;
+    if(burstCount>=5){
+      clearInterval(burstInterval);
+      // Normal interval 5s
+      setInterval(()=>{
+        requestId++;
+        fetchPrice(requestId);
+      },5000);
+    }
+  },500);
 }
 
-// Mulai polling
-startPolling();
+startFetchLoop();
 </script>
-
 </body>
 </html>
