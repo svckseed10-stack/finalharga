@@ -107,102 +107,100 @@ let lastBuy = null;
 let lastSell = null;
 let lastBuyDiff = 0;
 let lastSellDiff = 0;
-let bufferBuy = null;
-let bufferSell = null;
 
-// Format jam WIB Asia/Jakarta (AM/PM)
-function getJakartaTimeString() {
-  const now = new Date();
-  return new Intl.DateTimeFormat("en-US", {
+let fastFetchCount = 0;
+const FAST_FETCH_LIMIT = 5; // Burst 0.5 detik
+const BURST_INTERVAL = 500; // 0.5 detik
+const NORMAL_INTERVAL = 5000; // 5 detik setelah burst
+
+let requestId = 0; // Untuk menghindari race condition
+
+// Jam WIB realtime tiap detik
+setInterval(() => {
+  document.getElementById("time").innerText = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
     hour12: true,
     timeZone: "Asia/Jakarta"
-  }).format(now);
-}
+  }).format(new Date());
+}, 1000);
 
 function formatNumber(n) {
   return n.toLocaleString("id-ID");
 }
 
-// Fetch harga dari API
-async function fetchGoldPrice() {
+// Fetch & update harga dengan race condition safety
+async function fetchAndUpdate(currentRequestId) {
   try {
-    const res = await fetch("/api/gold", { cache: "no-store" });
+    const res = await fetch("/api/gold");
     const data = await res.json();
-    return { buy: parseFloat(data.buying_rate), sell: parseFloat(data.selling_rate) };
-  } catch (err) {
-    console.error("Error fetching gold price:", err);
-    return null;
-  }
-}
 
-// Update UI
-function updateUI() {
-  const buyEl = document.getElementById("buy");
-  const buyDiffEl = document.getElementById("buyDiff");
-  buyEl.classList.remove("green", "red", "fade");
+    // Abaikan response jika ada request lebih baru
+    if (currentRequestId < requestId) return;
 
-  const sellEl = document.getElementById("sell");
-  const sellDiffEl = document.getElementById("sellDiff");
-  sellEl.classList.remove("green", "red", "fade");
+    const buy = parseFloat(data.buying_rate);
+    const sell = parseFloat(data.selling_rate);
 
-  // ===== BUY =====
-  if (lastBuy !== null && bufferBuy !== lastBuy) {
-    const diff = bufferBuy - lastBuy;
-    lastBuyDiff = diff;
-    if (diff > 0) buyEl.classList.add("green", "fade");
-    else if (diff < 0) buyEl.classList.add("red", "fade");
-  }
+    // Jika harga tidak berubah, abaikan update
+    if (lastBuy === buy && lastSell === sell) return;
 
-  if (lastBuyDiff > 0) buyDiffEl.innerHTML = `<span class="green">⬆ +${formatNumber(lastBuyDiff)}</span>`;
-  else if (lastBuyDiff < 0) buyDiffEl.innerHTML = `<span class="red">⬇ ${formatNumber(lastBuyDiff)}</span>`;
-  else buyDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
+    const buyEl = document.getElementById("buy");
+    const buyDiffEl = document.getElementById("buyDiff");
+    buyEl.classList.remove("green", "red", "fade");
 
-  buyEl.innerText = formatNumber(bufferBuy);
+    const sellEl = document.getElementById("sell");
+    const sellDiffEl = document.getElementById("sellDiff");
+    sellEl.classList.remove("green", "red", "fade");
 
-  // ===== SELL =====
-  if (lastSell !== null && bufferSell !== lastSell) {
-    const diff = bufferSell - lastSell;
-    lastSellDiff = diff;
-    if (diff > 0) sellEl.classList.add("green", "fade");
-    else if (diff < 0) sellEl.classList.add("red", "fade");
-  }
-
-  if (lastSellDiff > 0) sellDiffEl.innerHTML = `<span class="green">⬆ +${formatNumber(lastSellDiff)}</span>`;
-  else if (lastSellDiff < 0) sellDiffEl.innerHTML = `<span class="red">⬇ ${formatNumber(lastSellDiff)}</span>`;
-  else sellDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
-
-  sellEl.innerText = formatNumber(bufferSell);
-
-  // ===== SPREAD =====
-  document.getElementById("spread").innerText = "Spread: " + formatNumber(bufferBuy - bufferSell);
-
-  lastBuy = bufferBuy;
-  lastSell = bufferSell;
-}
-
-// Main loop: fetch & update
-async function mainLoop() {
-  const now = new Date();
-  const seconds = now.getSeconds();
-  document.getElementById("time").innerText = getJakartaTimeString();
-
-  // Fetch hanya detik 55–05
-  if (seconds >= 55 || seconds <= 5) {
-    const prices = await fetchGoldPrice();
-    if (prices !== null) {
-      // Update buffer
-      bufferBuy = prices.buy;
-      bufferSell = prices.sell;
-      updateUI(); // langsung update UI
+    // ===== BUY =====
+    if (lastBuy !== null && buy !== lastBuy) {
+      const diff = buy - lastBuy;
+      lastBuyDiff = diff;
+      if (diff > 0) buyEl.classList.add("green", "fade");
+      else if (diff < 0) buyEl.classList.add("red", "fade");
     }
+    if (lastBuyDiff > 0) buyDiffEl.innerHTML = `<span class="green">⬆ +${formatNumber(lastBuyDiff)}</span>`;
+    else if (lastBuyDiff < 0) buyDiffEl.innerHTML = `<span class="red">⬇ ${formatNumber(lastBuyDiff)}</span>`;
+    else buyDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
+    buyEl.innerText = formatNumber(buy);
+
+    // ===== SELL =====
+    if (lastSell !== null && sell !== lastSell) {
+      const diff = sell - lastSell;
+      lastSellDiff = diff;
+      if (diff > 0) sellEl.classList.add("green", "fade");
+      else if (diff < 0) sellEl.classList.add("red", "fade");
+    }
+    if (lastSellDiff > 0) sellDiffEl.innerHTML = `<span class="green">⬆ +${formatNumber(lastSellDiff)}</span>`;
+    else if (lastSellDiff < 0) sellDiffEl.innerHTML = `<span class="red">⬇ ${formatNumber(lastSellDiff)}</span>`;
+    else sellDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
+    sellEl.innerText = formatNumber(sell);
+
+    // ===== SPREAD =====
+    document.getElementById("spread").innerText = "Spread: " + formatNumber(buy - sell);
+
+    lastBuy = buy;
+    lastSell = sell;
+
+  } catch (err) {
+    console.error("Fetch error:", err);
   }
 }
 
-// Jalankan loop tiap 0.5 detik
-setInterval(mainLoop, 500);
+// Non-blocking polling dengan race condition protection
+function startPolling() {
+  requestId++; // ID unik setiap polling
+  fetchAndUpdate(requestId);
+
+  fastFetchCount++;
+  let nextInterval = (fastFetchCount <= FAST_FETCH_LIMIT) ? BURST_INTERVAL : NORMAL_INTERVAL;
+
+  setTimeout(startPolling, nextInterval);
+}
+
+// Mulai polling
+startPolling();
 </script>
 
 </body>
