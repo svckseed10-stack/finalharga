@@ -109,7 +109,6 @@ let lastBuyDiff = 0;
 let lastSellDiff = 0;
 let bufferBuy = null;
 let bufferSell = null;
-let lastUpdateSecond = null;
 
 // Format jam WIB Asia/Jakarta (AM/PM)
 function getJakartaTimeString() {
@@ -194,16 +193,10 @@ async function mainLoop() {
   if (seconds >= 55 || seconds <= 5) {
     const prices = await fetchGoldPrice();
     if (prices !== null) {
+      // Update buffer
       bufferBuy = prices.buy;
       bufferSell = prices.sell;
-    }
-  }
-
-  // Update UI hanya di detik ke-2
-  if (seconds === 2 && lastUpdateSecond !== seconds) {
-    if (bufferBuy !== null && bufferSell !== null) {
-      updateUI();
-      lastUpdateSecond = seconds;
+      updateUI(); // langsung update UI
     }
   }
 }
