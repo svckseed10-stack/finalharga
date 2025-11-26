@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -26,24 +27,71 @@
     border: 1px solid #222;
   }
 
-  h1 { font-size: 18px; margin: 0 0 10px 0; text-align: center; }
-  .time { text-align: center; color: #bbb; font-size: 13px; margin-bottom: 12px; }
-  .row { margin: 12px 0; }
-  .label { color: #aaa; font-size: 13px; }
-  .value { font-size: 22px; font-weight: 700; }
-  .diff { font-size: 12px; margin-top: 4px; }
-  .profit { font-size: 16px; margin-top: 4px; text-align: center; font-weight: 600; }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 10px 0;
+    text-align: center;
+  }
+
+  .time {
+    text-align: center;
+    color: #bbb;
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+
+  .row {
+    margin: 12px 0;
+  }
+
+  .label {
+    color: #aaa;
+    font-size: 13px;
+  }
+
+  .value {
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .diff {
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
   .green { color: #4caf50; }
   .red { color: #ff6b6b; }
   .neutral { color: #999; }
-  .fade { animation: pulse 0.25s ease-out; }
-  @keyframes pulse { from { transform: scale(1.06); opacity: .2 } to { transform: scale(1); opacity: 1 } }
-  #spread { margin-top: 14px; color: #f0e68c; font-weight: 600; text-align: center; }
+
+  .fade {
+    animation: pulse 0.25s ease-out;
+  }
+
+  @keyframes pulse {
+    from { transform: scale(1.06); opacity: .2 }
+    to   { transform: scale(1); opacity: 1 }
+  }
+
+  #spread {
+    margin-top: 14px;
+    color: #f0e68c;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  #profit {
+    margin-top: 14px;
+    text-align: center;
+    font-weight: 600;
+    color: #fff;
+  }
 </style>
+
 </head>
 
 <body>
 <div class="card">
+
   <h1>Realtime Gold Price</h1>
   <div id="time" class="time">--:--:--</div>
 
@@ -51,141 +99,131 @@
     <div class="label">Buying Rate</div>
     <div id="buy" class="value">Loading...</div>
     <div id="buyDiff" class="diff neutral">(0)</div>
-    <div id="buyProfit" class="profit">Profit: -</div>
   </div>
 
   <div class="row">
     <div class="label">Selling Rate</div>
     <div id="sell" class="value">Loading...</div>
     <div id="sellDiff" class="diff neutral">(0)</div>
-    <div id="sellProfit" class="profit">Profit: -</div>
   </div>
 
   <div id="spread">Spread: -</div>
+  <div id="profit">Profit: -</div>
+
 </div>
 
 <script>
+const modalBayar = 19315000;
+const nilaiEmas = 20000000;
+
 let lastBuy = null;
 let lastSell = null;
 let lastBuyDiff = 0;
 let lastSellDiff = 0;
+let lastSellingRate = null;
 
-// Modal & diskon
-const MODAL = 20000000;
-const DISKON = 685000;
-const MODAL_EFEKTIF = MODAL - DISKON;
-
-// Request control
-let requestId = 0;
-
-// Format waktu WIB
-setInterval(() => {
-  document.getElementById("time").innerText = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric", minute: "2-digit", second: "2-digit",
-    hour12: true, timeZone: "Asia/Jakarta"
-  }).format(new Date());
-}, 1000);
+function getJakartaTimeString() {
+  const now = new Date();
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Jakarta"
+  }).format(now);
+}
 
 function formatNumber(n) {
   return n.toLocaleString("id-ID");
 }
 
-function calculateProfit(harga) {
-  return harga - MODAL_EFEKTIF;
+function hitungProfit(sellingRate, buyingRate) {
+    const jumlahGram = nilaiEmas / buyingRate;
+    const totalJual = jumlahGram * sellingRate;
+    const profitRupiah = totalJual - modalBayar;
+    const profitGram = profitRupiah / sellingRate;
+    return { profitRupiah, profitGram, jumlahGram };
 }
 
-function updateProfitDisplay(buyingRate, sellingRate) {
-  const buyProfitRupiah = calculateProfit(buyingRate);
-  const sellProfitRupiah = calculateProfit(sellingRate);
+function updateProfitUI(sellingRate, buyingRate) {
+    if (lastSellingRate !== null && lastSellingRate === sellingRate) return;
 
-  const buyProfitGram = buyingRate ? buyProfitRupiah / buyingRate : 0;
-  const sellProfitGram = sellingRate ? sellProfitRupiah / sellingRate : 0;
+    const { profitRupiah, profitGram, jumlahGram } = hitungProfit(sellingRate, buyingRate);
 
-  const buyProfitEl = document.getElementById("buyProfit");
-  const sellProfitEl = document.getElementById("sellProfit");
+    const profitEl = document.getElementById("profit");
+    let color = "neutral";
+    if (profitRupiah > 0) color = "green";
+    else if (profitRupiah < 0) color = "red";
 
-  buyProfitEl.innerText = `Profit: Rp ${buyProfitRupiah.toLocaleString("id-ID")} (${buyProfitGram.toFixed(2)} gr)`;
-  sellProfitEl.innerText = `Profit: Rp ${sellProfitRupiah.toLocaleString("id-ID")} (${sellProfitGram.toFixed(2)} gr)`;
+    profitEl.innerHTML = `Profit: <span class="${color}">Rp ${profitRupiah.toLocaleString("id-ID")} (${profitGram.toFixed(3)} gr)</span><br>
+                          Jumlah Emas: ${jumlahGram.toFixed(3)} gr`;
 
-  buyProfitEl.style.color = buyProfitRupiah >= 0 ? "#4caf50" : "#ff6b6b";
-  sellProfitEl.style.color = sellProfitRupiah >= 0 ? "#4caf50" : "#ff6b6b";
+    lastSellingRate = sellingRate;
 }
 
-async function fetchPrice(currentRequestId) {
+async function loadGold() {
   try {
     const res = await fetch("/api/gold");
     const data = await res.json();
 
-    // race-safe: abaikan request lama
-    if (currentRequestId < requestId) return;
-
     const buy = parseFloat(data.buying_rate);
     const sell = parseFloat(data.selling_rate);
 
+    document.getElementById("time").innerText = getJakartaTimeString();
+
     const buyEl = document.getElementById("buy");
     const buyDiffEl = document.getElementById("buyDiff");
-    buyEl.classList.remove("green","red","fade");
+    buyEl.classList.remove("green", "red", "fade");
 
     const sellEl = document.getElementById("sell");
     const sellDiffEl = document.getElementById("sellDiff");
-    sellEl.classList.remove("green","red","fade");
+    sellEl.classList.remove("green", "red", "fade");
 
-    // ==== BUY ====
-    if(lastBuy!==null && buy!==lastBuy){
+    // BUY
+    if (lastBuy !== null && buy !== lastBuy) {
       const diff = buy - lastBuy;
       lastBuyDiff = diff;
-      if(diff>0) buyEl.classList.add("green","fade");
-      else if(diff<0) buyEl.classList.add("red","fade");
+      buyEl.classList.add(diff>0?"green":"red","fade");
     }
-    buyDiffEl.innerHTML = lastBuyDiff>0 ? `<span class="green">⬆ +${formatNumber(lastBuyDiff)}</span>` :
-                        lastBuyDiff<0 ? `<span class="red">⬇ ${formatNumber(lastBuyDiff)}</span>` :
-                        `<span class="neutral">(0)</span>`;
     buyEl.innerText = formatNumber(buy);
+    if (lastBuyDiff>0) buyDiffEl.innerHTML = `<span class="green">⬆ +${formatNumber(lastBuyDiff)}</span>`;
+    else if (lastBuyDiff<0) buyDiffEl.innerHTML = `<span class="red">⬇ ${formatNumber(lastBuyDiff)}</span>`;
+    else buyDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
 
-    // ==== SELL ====
-    if(lastSell!==null && sell!==lastSell){
+    // SELL
+    if (lastSell !== null && sell !== lastSell) {
       const diff = sell - lastSell;
       lastSellDiff = diff;
-      if(diff>0) sellEl.classList.add("green","fade");
-      else if(diff<0) sellEl.classList.add("red","fade");
+      sellEl.classList.add(diff>0?"green":"red","fade");
     }
-    sellDiffEl.innerHTML = lastSellDiff>0 ? `<span class="green">⬆ +${formatNumber(lastSellDiff)}</span>` :
-                         lastSellDiff<0 ? `<span class="red">⬇ ${formatNumber(lastSellDiff)}</span>` :
-                         `<span class="neutral">(0)</span>`;
     sellEl.innerText = formatNumber(sell);
+    if (lastSellDiff>0) sellDiffEl.innerHTML = `<span class="green">⬆ +${formatNumber(lastSellDiff)}</span>`;
+    else if (lastSellDiff<0) sellDiffEl.innerHTML = `<span class="red">⬇ ${formatNumber(lastSellDiff)}</span>`;
+    else sellDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
 
-    // ==== Spread ====
-    document.getElementById("spread").innerText = "Spread: "+formatNumber(buy-sell);
+    // SPREAD
+    document.getElementById("spread").innerText = "Spread: " + formatNumber(buy - sell);
 
-    // ==== Profit ====
-    updateProfitDisplay(buy, sell);
+    // PROFIT
+    updateProfitUI(sell, buy);
 
     lastBuy = buy;
     lastSell = sell;
-  } catch(err){
+
+  } catch(err) {
+    document.getElementById("buy").innerText = "Error";
+    document.getElementById("sell").innerText = "Error";
+    document.getElementById("buyDiff").innerHTML = `<span class="neutral">(0)</span>`;
+    document.getElementById("sellDiff").innerHTML = `<span class="neutral">(0)</span>`;
+    document.getElementById("spread").innerText = "Spread: -";
+    document.getElementById("profit").innerText = "Profit: -";
     console.error(err);
   }
 }
 
-// Burst fetch 0.5s × 5 kali, kemudian 5s normal
-function startFetchLoop() {
-  let burstCount = 0;
-  const burstInterval = setInterval(()=>{
-    requestId++;
-    fetchPrice(requestId);
-    burstCount++;
-    if(burstCount>=5){
-      clearInterval(burstInterval);
-      // Normal interval 5s
-      setInterval(()=>{
-        requestId++;
-        fetchPrice(requestId);
-      },5000);
-    }
-  },500);
-}
-
-startFetchLoop();
+loadGold();
+setInterval(loadGold, 1000);
 </script>
+
 </body>
 </html>
