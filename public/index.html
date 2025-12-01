@@ -117,11 +117,10 @@
    KONFIGURASI MODAL FINAL
 ============================= */
 const nilaiEmas20 = 20000000;
-const modal20 = 20000000 - 685000;   // 19.315.000
+const modal20 = 20000000 - 685000;
 
 const nilaiEmas30 = 30000000;
-const modal30 = 30000000 - 1020000;  // 28.980.000
-
+const modal30 = 30000000 - 1020000;
 
 /* =============================
    FORMAT ANGKA
@@ -134,29 +133,21 @@ function formatNumber(n) {
   return n.toLocaleString("id-ID");
 }
 
-
 /* =============================
    PROFIT VARIAN 20 JT
 ============================= */
 function hitungProfit20(sellingRate, buyingRate) {
   const jumlahGram = nilaiEmas20 / buyingRate;
   const totalJual = jumlahGram * sellingRate;
-
   const profitRupiah = totalJual - modal20;
   const profitGram = profitRupiah / sellingRate;
-
   return { profitRupiah, profitGram, jumlahGram };
 }
 
 function updateProfitUI20(sellingRate, buyingRate) {
   const out = hitungProfit20(sellingRate, buyingRate);
-  document.getElementById("profit").innerHTML = `
-    Profit 20jt: Rp ${out.profitRupiah.toLocaleString("id-ID", { minimumFractionDigits: 3 })}
-    (${formatDecimal(out.profitGram)} gr)<br>
-    Jumlah Emas: ${formatDecimal(out.jumlahGram)} gr
-  `;
+  document.getElementById("profit").innerHTML = `Profit 20jt: Rp ${out.profitRupiah.toLocaleString("id-ID",{minimumFractionDigits:3})} (${formatDecimal(out.profitGram)} gr)`;
 }
-
 
 /* =============================
    PROFIT VARIAN 30 JT
@@ -164,20 +155,14 @@ function updateProfitUI20(sellingRate, buyingRate) {
 function hitungProfit30(sellingRate, buyingRate) {
   const jumlahGram = nilaiEmas30 / buyingRate;
   const totalJual = jumlahGram * sellingRate;
-
   const profitRupiah = totalJual - modal30;
   const profitGram = profitRupiah / sellingRate;
-
   return { profitRupiah, profitGram, jumlahGram };
 }
 
 function updateProfitUI30(sellingRate, buyingRate) {
   const out = hitungProfit30(sellingRate, buyingRate);
-  document.getElementById("profit2").innerHTML = `
-    Profit 30jt: Rp ${out.profitRupiah.toLocaleString("id-ID", { minimumFractionDigits: 3 })}
-    (${formatDecimal(out.profitGram)} gr)<br>
-    Jumlah Emas: ${formatDecimal(out.jumlahGram)} gr
-  `;
+  document.getElementById("profit2").innerHTML = `Profit 30jt: Rp ${out.profitRupiah.toLocaleString("id-ID",{minimumFractionDigits:3})} (${formatDecimal(out.profitGram)} gr)`;
 }
 
 function updateAllProfit(sell, buy) {
@@ -185,27 +170,38 @@ function updateAllProfit(sell, buy) {
   updateProfitUI30(sell, buy);
 }
 
-
 /* =============================
-   UPDATE WAKTU REaltime WIB
+   WAKTU SERVER REaltime
 ============================= */
-function getJakartaTimeString() {
-  return new Date().toLocaleTimeString("id-ID", {
-    timeZone: "Asia/Jakarta",
+let serverOffset = 0; // selisih server - local
+
+async function syncServerTime() {
+  try {
+    const res = await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta");
+    const data = await res.json();
+    const serverUnix = data.unixtime;
+    const localUnix = Math.floor(Date.now() / 1000);
+    serverOffset = serverUnix - localUnix;
+    console.log("Server time offset:", serverOffset, "detik");
+  } catch(e) {
+    console.error("Gagal sync waktu server:", e);
+  }
+}
+
+function updateServerClock() {
+  const localUnix = Math.floor(Date.now() / 1000);
+  const realUnix = localUnix + serverOffset;
+  const date = new Date(realUnix * 1000);
+  const timeString = date.toLocaleTimeString("id-ID", {
     hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
+    timeZone: "Asia/Jakarta"
   });
+  document.getElementById("time").innerText = timeString;
 }
 
-function updateTime() {
-  document.getElementById("time").innerText = getJakartaTimeString();
-}
-
-setInterval(updateTime, 1000);
-updateTime();
-
+syncServerTime();
+setInterval(updateServerClock, 1000);  // update tiap detik
+setInterval(syncServerTime, 300000);    // refresh offset tiap 5 menit
 
 /* =============================
    LOAD DATA EMAS REaltime
@@ -214,6 +210,7 @@ let lastBuy = null;
 let lastSell = null;
 let lastBuyDiff = 0;
 let lastSellDiff = 0;
+let lastTimestamp = null;
 
 async function loadGold() {
   try {
@@ -222,6 +219,11 @@ async function loadGold() {
 
     const buy = parseFloat(data.buying_rate);
     const sell = parseFloat(data.selling_rate);
+    const timestamp = new Date(data.updated_at);
+
+    // jangan update jika timestamp mundur atau sama
+    if(lastTimestamp && timestamp <= lastTimestamp) return;
+    lastTimestamp = timestamp;
 
     const buyEl = document.getElementById("buy");
     const buyDiffEl = document.getElementById("buyDiff");
@@ -233,9 +235,8 @@ async function loadGold() {
 
     /* ===== BUY ===== */
     if(lastBuy !== null && buy !== lastBuy){
-      const diff = buy - lastBuy;
-      lastBuyDiff = diff;
-      buyEl.classList.add(diff>0?"green":"red","fade");
+      lastBuyDiff = buy - lastBuy;
+      buyEl.classList.add(lastBuyDiff>0?"green":"red","fade");
     }
     buyEl.innerText = formatNumber(buy);
     buyDiffEl.innerHTML = lastBuyDiff>0 ? `<span class="green">⬆ +${formatNumber(lastBuyDiff)}</span>` :
@@ -244,9 +245,8 @@ async function loadGold() {
 
     /* ===== SELL ===== */
     if(lastSell !== null && sell !== lastSell){
-      const diff = sell - lastSell;
-      lastSellDiff = diff;
-      sellEl.classList.add(diff>0?"green":"red","fade");
+      lastSellDiff = sell - lastSell;
+      sellEl.classList.add(lastSellDiff>0?"green":"red","fade");
     }
     sellEl.innerText = formatNumber(sell);
     sellDiffEl.innerHTML = lastSellDiff>0 ? `<span class="green">⬆ +${formatNumber(lastSellDiff)}</span>` :
@@ -264,19 +264,12 @@ async function loadGold() {
 
   } catch(err){
     console.error(err);
-    buyEl.innerText = "Error";
-    sellEl.innerText = "Error";
-    buyDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
-    sellDiffEl.innerHTML = `<span class="neutral">(0)</span>`;
-    document.getElementById("spread").innerText = "Spread: -";
-    document.getElementById("profit").innerText = "Profit 20jt: -";
-    document.getElementById("profit2").innerText = "Profit 30jt: -";
   }
 }
 
 loadGold();
 setInterval(loadGold, 1000); // update harga tiap detik
-
 </script>
+
 </body>
 </html>
