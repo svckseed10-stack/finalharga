@@ -31,10 +31,16 @@ h1 {
   margin-bottom:8px;
 }
 
-.time, #timestamp {
+.timebar {
   text-align:center;
-  color:#aaa;
-  font-size:12px;
+  color:#bbb;
+  font-size:13px;
+  margin-bottom:12px;
+}
+
+.separator {
+  color:#555;
+  margin:0 6px;
 }
 
 .row { margin-top:12px }
@@ -65,7 +71,13 @@ h1 {
 <body>
 <div class="card">
   <h1>Realtime Gold Price</h1>
-  <div id="time" class="time">--:--:--</div>
+
+  <!-- TIME + TIMESTAMP -->
+  <div class="timebar">
+    <span id="time">--.--.--</span>
+    <span class="separator">|</span>
+    <span id="timestamp">Last update: --.--.--</span>
+  </div>
 
   <div class="row">
     <div class="label">Buying</div>
@@ -82,17 +94,15 @@ h1 {
   <div id="spread">Spread: -</div>
   <div id="profit">Profit 20jt: -</div>
   <div id="profit2">Profit 30jt: -</div>
-
-  <div id="timestamp">Last update: -</div>
 </div>
 
 <script>
 /* =============================
    KONFIGURASI POLLING
 ============================= */
-const FAST_INTERVAL = 200;
-const FAST_DURATION = 4000;
-const NORMAL_INTERVAL = 5000;
+const FAST_INTERVAL = 200;     // agresif
+const FAST_DURATION = 4000;   // 4 detik
+const NORMAL_INTERVAL = 5000; // ±720/jam
 
 /* =============================
    KONFIGURASI MODAL
@@ -117,16 +127,24 @@ let lastSell = null;
 ============================= */
 const fmt = n => Number(n).toLocaleString("id-ID");
 
+function formatTime(date){
+  return date.toLocaleTimeString("id-ID",{
+    hour12:false,
+    hour:"2-digit",
+    minute:"2-digit",
+    second:"2-digit"
+  }).replace(/:/g,".");
+}
+
 /* =============================
-   JAM
+   JAM REALTIME
 ============================= */
 setInterval(()=>{
-  document.getElementById("time").innerText =
-    new Date().toLocaleTimeString("id-ID",{hour12:false});
+  document.getElementById("time").innerText = formatTime(new Date());
 },1000);
 
 /* =============================
-   PROFIT
+   PROFIT & SPREAD
 ============================= */
 function updateProfit(buy, sell){
   document.getElementById("spread").innerText =
@@ -144,7 +162,7 @@ function updateProfit(buy, sell){
 }
 
 /* =============================
-   FETCH
+   FETCH GOLD
 ============================= */
 async function loadGold(){
   if(isFetching) return;
@@ -178,8 +196,7 @@ async function loadGold(){
     updateProfit(buy, sell);
 
     document.getElementById("timestamp").innerText =
-      "Last update: " +
-      new Date(ts).toLocaleTimeString("id-ID",{hour12:false});
+      "Last update: " + formatTime(new Date(ts));
 
     lastBuy = buy;
     lastSell = sell;
