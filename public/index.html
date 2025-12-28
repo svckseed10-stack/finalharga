@@ -1,224 +1,162 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-<meta charset="utf-8" />
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Realtime Gold Price (WIB)</title>
+<title>Realtime Gold Price</title>
 
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #111;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    margin: 0;
-  }
+body {
+  background:#111;
+  color:#fff;
+  font-family:Arial,sans-serif;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  margin:0;
+}
 
-  .card {
-    background: #1a1a1a;
-    padding: 20px 24px;
-    border-radius: 12px;
-    width: 360px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
-    border: 1px solid #222;
-  }
+.card {
+  background:#1a1a1a;
+  padding:20px 24px;
+  border-radius:12px;
+  width:360px;
+  border:1px solid #222;
+}
 
-  h1 {
-    font-size: 18px;
-    margin: 0 0 10px 0;
-    text-align: center;
-  }
+h1 {
+  text-align:center;
+  font-size:18px;
+  margin-bottom:8px;
+}
 
-  .time {
-    text-align: center;
-    color: #bbb;
-    font-size: 13px;
-    margin-bottom: 12px;
-  }
+.time, #timestamp {
+  text-align:center;
+  color:#aaa;
+  font-size:12px;
+}
 
-  .row { margin: 12px 0; }
-  .label { color: #aaa; font-size: 13px; }
-  .value { font-size: 22px; font-weight: 700; }
-  .diff { font-size: 12px; margin-top: 4px; }
+.row { margin-top:12px }
+.label { color:#aaa; font-size:13px }
+.value { font-size:22px; font-weight:700 }
 
-  .green { color: #4caf50; }
-  .red { color: #ff6b6b; }
-  .neutral { color: #999; }
+.green { color:#4caf50 }
+.red { color:#ff6b6b }
 
-  .fade { animation: pulse 0.25s ease-out; }
+.fade {
+  animation:pulse .25s ease-out;
+}
 
-  @keyframes pulse {
-    from { transform: scale(1.06); opacity: .2 }
-    to   { transform: scale(1); opacity: 1 }
-  }
-
-  #spread {
-    margin-top: 14px;
-    color: #f0e68c;
-    font-weight: 600;
-    text-align: center;
-  }
-
-  #profit, #profit2 {
-    margin-top: 14px;
-    text-align: center;
-    font-weight: 600;
-  }
+@keyframes pulse {
+  from { transform:scale(1.06); opacity:.3 }
+  to { transform:scale(1); opacity:1 }
+}
 </style>
 </head>
 
 <body>
 <div class="card">
-
   <h1>Realtime Gold Price</h1>
   <div id="time" class="time">--:--:--</div>
 
   <div class="row">
-    <div class="label">Buying Rate</div>
-    <div id="buy" class="value">Loading...</div>
-    <div id="buyDiff" class="diff neutral">(0)</div>
+    <div class="label">Buying</div>
+    <div id="buy" class="value">-</div>
   </div>
 
   <div class="row">
-    <div class="label">Selling Rate</div>
-    <div id="sell" class="value">Loading...</div>
-    <div id="sellDiff" class="diff neutral">(0)</div>
+    <div class="label">Selling</div>
+    <div id="sell" class="value">-</div>
   </div>
 
-  <div id="spread">Spread: -</div>
-  <div id="profit">Profit 20jt: -</div>
-  <div id="profit2">Profit 30jt: -</div>
-
+  <div id="timestamp">Last update: -</div>
 </div>
 
 <script>
 /* =============================
-   KONFIGURASI MODAL
+   KONFIGURASI POLLING
 ============================= */
-const nilaiEmas20 = 20000000;
-const modal20 = 20000000 - 685000;
-
-const nilaiEmas30 = 30000000;
-const modal30 = 30000000 - 1020000;
+const FAST_INTERVAL = 200;      // agresif
+const FAST_DURATION = 4000;     // 4 detik
+const NORMAL_INTERVAL = 5000;   // normal (penentu 600–800/jam)
 
 /* =============================
-   FORMAT
+   STATE
 ============================= */
-const formatNumber = n => n.toLocaleString("id-ID");
-const formatDecimal = n => n.toLocaleString("id-ID",{minimumFractionDigits:4});
+let poller = null;
+let isFetching = false;
+let lastTimestamp = null;
 
 /* =============================
-   PROFIT
+   UTIL
 ============================= */
-function updateAllProfit(sell, buy) {
-  const gram20 = nilaiEmas20 / buy;
-  const profit20 = gram20 * sell - modal20;
-  document.getElementById("profit").innerHTML =
-    `Profit 20jt: Rp ${profit20.toLocaleString("id-ID",{minimumFractionDigits:3})}
-     (${formatDecimal(profit20/sell)} gr)`;
-
-  const gram30 = nilaiEmas30 / buy;
-  const profit30 = gram30 * sell - modal30;
-  document.getElementById("profit2").innerHTML =
-    `Profit 30jt: Rp ${profit30.toLocaleString("id-ID",{minimumFractionDigits:3})}
-     (${formatDecimal(profit30/sell)} gr)`;
-}
+const format = n => Number(n).toLocaleString("id-ID");
 
 /* =============================
-   JAM WIB SERVER
+   JAM WIB
 ============================= */
-let serverOffset = 0;
-
-async function syncServerTime() {
-  try {
-    const r = await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta");
-    const d = await r.json();
-    serverOffset = d.unixtime - Math.floor(Date.now()/1000);
-  } catch {}
-}
-
-function updateClock() {
-  const t = new Date((Math.floor(Date.now()/1000)+serverOffset)*1000);
+setInterval(()=>{
   document.getElementById("time").innerText =
-    t.toLocaleTimeString("id-ID",{hour12:false});
-}
-
-syncServerTime();
-setInterval(updateClock,1000);
-setInterval(syncServerTime,300000);
+    new Date().toLocaleTimeString("id-ID",{hour12:false});
+},1000);
 
 /* =============================
-   LOAD GOLD (ANTI ROLLBACK)
+   FETCH GOLD
 ============================= */
-let lastBuy=null, lastSell=null;
-let lastBuyDiff=0, lastSellDiff=0;
-let lastTimestamp=null;
-
 async function loadGold(){
+  if(isFetching) return;
+  isFetching = true;
+
   try{
     const r = await fetch("/api/gold",{cache:"no-store"});
     const d = await r.json();
 
-    const buy = Number(d.buying_rate);
-    const sell = Number(d.selling_rate);
+    const ts = new Date(d.updated_at.replace(" ","T")).getTime();
+    if(lastTimestamp && ts <= lastTimestamp) return;
+    lastTimestamp = ts;
 
-    // 🔐 FIX UTAMA
-    const timestamp = new Date(
-      d.updated_at.replace(" ","T")
-    ).getTime();
+    const buyEl = document.getElementById("buy");
+    const sellEl = document.getElementById("sell");
 
-    if(lastTimestamp!==null && timestamp<=lastTimestamp) return;
-    lastTimestamp = timestamp;
+    buyEl.classList.add("fade");
+    sellEl.classList.add("fade");
 
-    const buyEl=document.getElementById("buy");
-    const sellEl=document.getElementById("sell");
-    const buyDiffEl=document.getElementById("buyDiff");
-    const sellDiffEl=document.getElementById("sellDiff");
+    buyEl.innerText = format(d.buying_rate);
+    sellEl.innerText = format(d.selling_rate);
 
-    buyEl.classList.remove("green","red","fade");
-    sellEl.classList.remove("green","red","fade");
-
-    if(lastBuy!==null && buy!==lastBuy){
-      lastBuyDiff=buy-lastBuy;
-      buyEl.classList.add(lastBuyDiff>0?"green":"red","fade");
-    }
-    if(lastSell!==null && sell!==lastSell){
-      lastSellDiff=sell-lastSell;
-      sellEl.classList.add(lastSellDiff>0?"green":"red","fade");
-    }
-
-    buyEl.innerText=formatNumber(buy);
-    sellEl.innerText=formatNumber(sell);
-
-    buyDiffEl.innerHTML=
-      lastBuyDiff>0?`<span class="green">⬆ +${formatNumber(lastBuyDiff)}</span>`:
-      lastBuyDiff<0?`<span class="red">⬇ ${formatNumber(lastBuyDiff)}</span>`:
-      `<span class="neutral">(0)</span>`;
-
-    sellDiffEl.innerHTML=
-      lastSellDiff>0?`<span class="green">⬆ +${formatNumber(lastSellDiff)}</span>`:
-      lastSellDiff<0?`<span class="red">⬇ ${formatNumber(lastSellDiff)}</span>`:
-      `<span class="neutral">(0)</span>`;
-
-    document.getElementById("spread").innerText =
-      "Spread: "+formatNumber(buy-sell);
-
-    updateAllProfit(sell,buy);
-
-    lastBuy=buy;
-    lastSell=sell;
+    document.getElementById("timestamp").innerText =
+      "Last update: " + new Date(ts).toLocaleTimeString("id-ID",{hour12:false});
 
   }catch(e){
-    console.error("Fetch error:",e);
+    console.error(e);
+  }finally{
+    isFetching = false;
   }
 }
 
-loadGold();
-setInterval(loadGold,1000);
-</script>
+/* =============================
+   POLLING CONTROL
+============================= */
+function startNormal(){
+  clearInterval(poller);
+  poller = setInterval(loadGold, NORMAL_INTERVAL);
+}
 
+function startAggressive(){
+  clearInterval(poller);
+  poller = setInterval(loadGold, FAST_INTERVAL);
+
+  setTimeout(()=>{
+    startNormal();
+  }, FAST_DURATION);
+}
+
+/* =============================
+   INIT (PAGE LOAD / REFRESH)
+============================= */
+loadGold();        // fetch langsung
+startAggressive(); // agresif hanya di awal
+</script>
 </body>
 </html>
