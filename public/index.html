@@ -110,23 +110,29 @@ function updateProfit(sell,buy){
 
 /* ================= TIME SYNC ================= */
 let offset=0,lastTimestamp=null;
+
 async function syncTime(){
   try{
     const r=await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta",{cache:"no-store"});
     const d=await r.json();
-    offset=d.unixtime*1000-Date.now();
-  }catch{}
+    offset=d.unixtime*1000-Date.now();  // Update offset based on current time difference
+  }catch{
+    console.error("Failed to sync time");
+  }
 }
-syncTime();
-setInterval(syncTime,300000);
 
+// Initial time sync and subsequent updates every 5 minutes
+syncTime();
+setInterval(syncTime, 300000);  // Sync time every 5 minutes
+
+// Update the displayed time based on the current offset
 setInterval(()=>{
-  const now=new Date(Date.now()+offset);
+  const now=new Date(Date.now()+offset);  // Adjust time based on the offset
   time.innerText=
     now.toLocaleTimeString("id-ID",{hour12:false})+
-    " | Last update: "+
+    " | Last update: "+ 
     (lastTimestamp?new Date(lastTimestamp).toLocaleTimeString("id-ID",{hour12:false}):"--:--:--");
-},1000);
+}, 1000);
 
 /* ================= GOLD ================= */
 let lastBuy=null,lastSell=null,isFetching=false;
@@ -179,7 +185,7 @@ async function loadGold(){
 
 /* ================= POLLING ================= */
 loadGold();
-setInterval(loadGold,200);
+setInterval(loadGold, 200);  // Update gold prices every 200ms
 </script>
 
 </body>
