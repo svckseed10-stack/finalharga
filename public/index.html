@@ -7,6 +7,8 @@
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+
+/* ===== CENTER LAYOUT ===== */
 body{
   font-family:Arial,sans-serif;
   background:#111;
@@ -14,17 +16,16 @@ body{
   min-height:100vh;
   display:flex;
   justify-content:center;
-  align-items:flex-start;
+  align-items:center;
 }
 
-/* ===== CARD LAYOUT FIX ===== */
+/* ===== CARD ===== */
 .card{
   background:#1a1a1a;
   padding:20px;
   border-radius:12px;
-  margin-top:20px;
   width:100%;
-  max-width:420px; /* ⬅️ ini kunci layout */
+  max-width:420px;
   box-shadow:0 8px 30px rgba(0,0,0,.6);
   border:1px solid #222;
   text-align:center;
@@ -32,6 +33,7 @@ body{
 
 h1{font-size:18px;margin-bottom:10px}
 .time{color:#bbb;font-size:13px;margin-bottom:12px}
+
 .row{margin:12px 0}
 .label{color:#aaa;font-size:13px}
 .value{font-size:22px;font-weight:700}
@@ -53,10 +55,10 @@ h1{font-size:18px;margin-bottom:10px}
 }
 #spread{color:#f0e68c}
 
-.flash{animation:flash 0.5s ease-out}
+.flash{animation:flash .5s ease-out}
 @keyframes flash{
-  0%{background-color:rgba(255,255,0,0.2)}
-  50%{background-color:rgba(255,255,0,0.5)}
+  0%{background-color:rgba(255,255,0,.2)}
+  50%{background-color:rgba(255,255,0,.5)}
   100%{background-color:transparent}
 }
 </style>
@@ -106,7 +108,7 @@ function updateProfit(sell,buy){
   profit2.innerHTML=`Profit 30jt: Rp ${fmt(b.profit)} (${fmt4(b.profitGram)} gr)`;
 }
 
-/* ================= WAKTU SERVER ================= */
+/* ================= TIME SYNC ================= */
 let offset=0,lastTimestamp=null;
 async function syncTime(){
   try{
@@ -127,8 +129,7 @@ setInterval(()=>{
 },1000);
 
 /* ================= GOLD ================= */
-let lastBuy=null,lastSell=null;
-let isFetching=false;
+let lastBuy=null,lastSell=null,isFetching=false;
 
 async function loadGold(){
   if(isFetching) return;
