@@ -1,269 +1,41 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Realtime Gold Price</title>
-
-<style>
-body {
-  background:#111;
-  color:#fff;
-  font-family:Arial,sans-serif;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  height:100vh;
-  margin:0;
-}
-
-.card {
-  background:#1a1a1a;
-  padding:20px 24px;
-  border-radius:12px;
-  width:360px;
-  border:1px solid #222;
-}
-
-h1 {
-  text-align:center;
-  font-size:18px;
-  margin-bottom:8px;
-}
-
-.timebar {
-  text-align:center;
-  color:#bbb;
-  font-size:13px;
-  margin-bottom:12px;
-}
-
-.separator {
-  color:#555;
-  margin:0 6px;
-}
-
-.row { margin-top:12px }
-.label { color:#aaa; font-size:13px }
-.value { font-size:22px; font-weight:700 }
-
-.diff { font-size:12px; margin-top:4px }
-
-.green { color:#4caf50 }
-.red { color:#ff6b6b }
-.neutral { color:#999 }
-
-.fade { animation:pulse .25s ease-out }
-
-@keyframes pulse {
-  from { transform:scale(1.06); opacity:.3 }
-  to { transform:scale(1); opacity:1 }
-}
-
-@keyframes flash {
-  0%   { background-color: rgba(255,255,0,0.2); }
-  50%  { background-color: rgba(255,255,0,0.5); }
-  100% { background-color: transparent; }
-}
-
-.flash {
-  animation: flash 0.5s ease-out;
-}
-
-#spread, #profit, #profit2 {
-  margin-top:12px;
-  text-align:center;
-  font-weight:600;
-}
-</style>
-</head>
-
-<body>
-<div class="card">
-  <h1>Realtime Gold Price</h1>
-
-  <div class="timebar">
-    <span id="time">--.--.--</span>
-    <span class="separator">|</span>
-    <span id="timestamp">Last update: --.--.--</span>
-  </div>
-
-  <div class="row">
-    <div class="label">Buying</div>
-    <div id="buy" class="value">-</div>
-  </div>
-
-  <div class="row">
-    <div class="label">Selling</div>
-    <div id="sell" class="value">-</div>
-  </div>
-
-  <div id="spread">Spread: -</div>
-  <div id="profit">Profit 20jt: -</div>
-  <div id="profit2">Profit 30jt: -</div>
-</div>
-
 <script>
 /* =============================
-// CONFIG
+// FORMAT NUMBER (SAMA SEPERTI AWAL)
 ============================= */
-const FAST_INTERVAL = 200;     // 200ms
-const FAST_DURATION = 4000;    // 4 detik
-const NORMAL_INTERVAL = 5000;  // 5 detik
+function fmtRp(n){
+  let parts = Number(n).toFixed(3).split(".");
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return parts.join(",");
+}
 
-const nilaiEmas20 = 20000000;
-const modal20 = nilaiEmas20 - 685000;
-
-const nilaiEmas30 = 30000000;
-const modal30 = nilaiEmas30 - 1020000;
-
-/* =============================
-// STATE
-============================= */
-let poller = null;
-let isFetching = false;
-let lastTimestamp = null;
-let lastBuy = null;
-let lastSell = null;
-let serverOffset = 0;
-
-/* =============================
-// UTIL
-============================= */
-const fmt = n => {
+function fmtInt(n){
   return Number(n).toLocaleString("id-ID");
-};
-
-function formatTime(d){
-  return d.toLocaleTimeString("id-ID", {
-    hour12:false,
-    hour:"2-digit",
-    minute:"2-digit",
-    second:"2-digit"
-  }).replace(/:/g,".");
 }
 
 /* =============================
-// SERVER TIME
-============================= */
-async function syncServerTime(){
-  try{
-    const r = await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta");
-    const d = await r.json();
-    serverOffset = d.unixtime * 1000 - Date.now();
-  }catch(e){}
-}
-
-syncServerTime();
-setInterval(syncServerTime, 5 * 60 * 1000);
-
-setInterval(() => {
-  const now = new Date(Date.now() + serverOffset);
-  document.getElementById("time").innerText = formatTime(now);
-}, 1000);
-
-/* =============================
-// PROFIT
+// PROFIT & SPREAD (FORMAT ASLI)
 ============================= */
 function updateProfit(buy, sell){
+  const spread = buy - sell;
   document.getElementById("spread").innerText =
-    "Spread: " + fmt(buy - sell);
+    "Spread: " + fmtInt(spread);
 
+  // ===== 20 JT =====
   const gram20 = nilaiEmas20 / buy;
   const profit20 = gram20 * sell - modal20;
-  document.getElementById("profit").innerText =
-    "Profit 20jt: Rp " + fmt(profit20.toFixed(0));
+  const gramProfit20 = profit20 / sell;
 
+  document.getElementById("profit").innerText =
+    "Profit 20jt: Rp " + fmtRp(profit20) +
+    " (" + gramProfit20.toFixed(4).replace(".", ",") + " gr)";
+
+  // ===== 30 JT =====
   const gram30 = nilaiEmas30 / buy;
   const profit30 = gram30 * sell - modal30;
+  const gramProfit30 = profit30 / sell;
+
   document.getElementById("profit2").innerText =
-    "Profit 30jt: Rp " + fmt(profit30.toFixed(0));
+    "Profit 30jt: Rp " + fmtRp(profit30) +
+    " (" + gramProfit30.toFixed(4).replace(".", ",") + " gr)";
 }
-
-/* =============================
-// FETCH GOLD
-============================= */
-async function loadGold(){
-  if(isFetching) return;
-  isFetching = true;
-
-  try{
-    const r = await fetch("/api/gold",{cache:"no-store"});
-    const d = await r.json();
-
-    const ts = new Date(d.updated_at.replace(" ","T")).getTime();
-    if(lastTimestamp && ts <= lastTimestamp){
-      isFetching = false;
-      return;
-    }
-    lastTimestamp = ts;
-
-    const buy = +d.buying_rate;
-    const sell = +d.selling_rate;
-
-    const buyEl = document.getElementById("buy");
-    const sellEl = document.getElementById("sell");
-
-    buyEl.className = "value";
-    sellEl.className = "value";
-
-    if(lastBuy !== null){
-      buyEl.classList.add(buy > lastBuy ? "green" : "red","fade");
-      sellEl.classList.add(sell > lastSell ? "green" : "red","fade");
-    }
-
-    buyEl.innerText = fmt(buy);
-    sellEl.innerText = fmt(sell);
-
-    updateProfit(buy, sell);
-
-    const tsEl = document.getElementById("timestamp");
-    tsEl.innerText = "Last update: " + formatTime(new Date(ts));
-    tsEl.classList.remove("flash");
-    void tsEl.offsetWidth;
-    tsEl.classList.add("flash");
-
-    lastBuy = buy;
-    lastSell = sell;
-
-  }catch(e){
-    console.error(e);
-  }finally{
-    isFetching = false;
-  }
-}
-
-/* =============================
-// POLLING
-============================= */
-function startFastPolling(){
-  clearInterval(poller);
-  loadGold(); // langsung fetch
-  poller = setInterval(loadGold, FAST_INTERVAL);
-  setTimeout(startNormalPolling, FAST_DURATION);
-}
-
-function startNormalPolling(){
-  clearInterval(poller);
-  poller = setInterval(loadGold, NORMAL_INTERVAL);
-}
-
-function scheduleNextMinute(){
-  const now = new Date(Date.now() + serverOffset);
-  const sec = now.getSeconds();
-  const ms = (60 - sec) * 1000;
-
-  setTimeout(() => {
-    startFastPolling();       // detik 00 → 200ms
-    scheduleNextMinute();     // loop tiap menit
-  }, ms + 10);
-}
-
-/* =============================
-// START
-============================= */
-startFastPolling();      // ✅ buka / refresh langsung 200ms
-scheduleNextMinute();    // ✅ setiap menit detik 00
 </script>
-</body>
-</html>
