@@ -11,47 +11,53 @@ body{
   font-family:Arial,sans-serif;
   background:#111;
   color:#fff;
-  height:100vh;
-  overflow:hidden
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
 }
+
+/* ===== CARD LAYOUT FIX ===== */
 .card{
   background:#1a1a1a;
   padding:20px;
   border-radius:12px;
-  margin:20px auto 0 auto;
+  margin-top:20px;
+  width:100%;
+  max-width:420px; /* ⬅️ ini kunci layout */
   box-shadow:0 8px 30px rgba(0,0,0,.6);
   border:1px solid #222;
   text-align:center;
-  position:relative;
-  z-index:10
 }
+
 h1{font-size:18px;margin-bottom:10px}
 .time{color:#bbb;font-size:13px;margin-bottom:12px}
 .row{margin:12px 0}
 .label{color:#aaa;font-size:13px}
 .value{font-size:22px;font-weight:700}
 .diff{font-size:12px;margin-top:4px}
+
 .green{color:#4caf50}
 .red{color:#ff6b6b}
 .neutral{color:#999}
+
 .fade{animation:pulse .25s ease-out}
 @keyframes pulse{
   from{transform:scale(1.06);opacity:.2}
   to{transform:scale(1);opacity:1}
 }
-#spread,#profit,#profit2{margin-top:14px;font-weight:600}
+
+#spread,#profit,#profit2{
+  margin-top:14px;
+  font-weight:600
+}
 #spread{color:#f0e68c}
+
 .flash{animation:flash 0.5s ease-out}
 @keyframes flash{
   0%{background-color:rgba(255,255,0,0.2)}
   50%{background-color:rgba(255,255,0,0.5)}
   100%{background-color:transparent}
-}
-#chartWrapper{
-  position:absolute;
-  left:0;right:0;bottom:0;
-  width:100%;
-  z-index:0
 }
 </style>
 </head>
@@ -79,24 +85,7 @@ h1{font-size:18px;margin-bottom:10px}
   <div id="profit2">Profit 30jt: -</div>
 </div>
 
-<!-- Menghilangkan chart TradingView -->
-<div id="chartWrapper">
-  <!-- Tidak ada lagi div untuk chart -->
-</div>
-
 <script>
-/* ================= LAYOUT ================= */
-function adjustCardWidth(){
-  const chart=document.getElementById("chartWrapper");
-  const card=document.getElementById("goldCard");
-  card.style.width=chart.offsetWidth+"px";
-  const h=card.offsetHeight+20;
-  chart.style.top=h+"px";
-  chart.style.height=`calc(100vh - ${h}px)`;
-}
-window.addEventListener("load",adjustCardWidth);
-window.addEventListener("resize",adjustCardWidth);
-
 /* ================= PROFIT ================= */
 const nilai20=20000000, modal20=nilai20-685000;
 const nilai30=30000000, modal30=nilai30-1020000;
@@ -108,51 +97,39 @@ function hitung(sell,buy,nilai,modal){
   const gram=nilai/buy;
   const jual=gram*sell;
   const profit=jual-modal;
-  return{profit,gram,profitGram:profit/sell};
+  return{profit,profitGram:profit/sell};
 }
 function updateProfit(sell,buy){
   const a=hitung(sell,buy,nilai20,modal20);
   const b=hitung(sell,buy,nilai30,modal30);
-  document.getElementById("profit").innerHTML=`Profit 20jt: Rp ${fmt(a.profit)} (${fmt4(a.profitGram)} gr)`;
-  document.getElementById("profit2").innerHTML=`Profit 30jt: Rp ${fmt(b.profit)} (${fmt4(b.profitGram)} gr)`;
+  profit.innerHTML=`Profit 20jt: Rp ${fmt(a.profit)} (${fmt4(a.profitGram)} gr)`;
+  profit2.innerHTML=`Profit 30jt: Rp ${fmt(b.profit)} (${fmt4(b.profitGram)} gr)`;
 }
 
 /* ================= WAKTU SERVER ================= */
-let offset=0;
+let offset=0,lastTimestamp=null;
 async function syncTime(){
   try{
     const r=await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta",{cache:"no-store"});
     const d=await r.json();
     offset=d.unixtime*1000-Date.now();
-  }catch(e){
-    console.error("Gagal sync waktu server:",e);
-  }
+  }catch{}
 }
 syncTime();
-setInterval(syncTime,5*60*1000);
+setInterval(syncTime,300000);
 
-function clock(){
+setInterval(()=>{
   const now=new Date(Date.now()+offset);
-  document.getElementById("time").innerText=now.toLocaleTimeString("id-ID",{hour12:false}) + 
-    " | Last update: " + (lastTimestamp ? new Date(lastTimestamp).toLocaleTimeString("id-ID",{hour12:false}) : "--:--:--");
-}
-setInterval(clock,1000);
+  time.innerText=
+    now.toLocaleTimeString("id-ID",{hour12:false})+
+    " | Last update: "+
+    (lastTimestamp?new Date(lastTimestamp).toLocaleTimeString("id-ID",{hour12:false}):"--:--:--");
+},1000);
 
 /* ================= GOLD ================= */
 let lastBuy=null,lastSell=null;
-let lastBuyDiff=0,lastSellDiff=0;
-let lastTimestamp=null;
-
-const buyEl=document.getElementById("buy");
-const sellEl=document.getElementById("sell");
-const buyDiff=document.getElementById("buyDiff");
-const sellDiff=document.getElementById("sellDiff");
-const spread=document.getElementById("spread");
-
 let isFetching=false;
-let poller=null;
 
-/* ================= FETCH GOLD ================= */
 async function loadGold(){
   if(isFetching) return;
   isFetching=true;
@@ -162,77 +139,46 @@ async function loadGold(){
     const d=await r.json();
     if(!d.updated_at) return;
 
-    const buy=Number(d.buying_rate);
-    const sell=Number(d.selling_rate);
+    const buyVal=+d.buying_rate;
+    const sellVal=+d.selling_rate;
     const ts=new Date(d.updated_at.replace(" ","T")).getTime();
-
     if(lastTimestamp && ts<=lastTimestamp) return;
     lastTimestamp=ts;
 
-    buyEl.classList.remove("green","red","fade");
-    sellEl.classList.remove("green","red","fade");
+    buy.className="value";
+    sell.className="value";
 
     if(lastBuy!==null){
-      lastBuyDiff=buy-lastBuy;
-      if(lastBuyDiff!==0) buyEl.classList.add(lastBuyDiff>0?"green":"red","fade");
+      buy.classList.add(buyVal>lastBuy?"green":"red","fade");
+      buyDiff.innerHTML=buyVal-lastBuy
+        ?`<span class="${buyVal>lastBuy?"green":"red"}">${buyVal>lastBuy?"⬆":"⬇"} ${fmt(buyVal-lastBuy)}</span>`
+        :`<span class="neutral">(0)</span>`;
     }
+
     if(lastSell!==null){
-      lastSellDiff=sell-lastSell;
-      if(lastSellDiff!==0) sellEl.classList.add(lastSellDiff>0?"green":"red","fade");
+      sell.classList.add(sellVal>lastSell?"green":"red","fade");
+      sellDiff.innerHTML=sellVal-lastSell
+        ?`<span class="${sellVal>lastSell?"green":"red"}">${sellVal>lastSell?"⬆":"⬇"} ${fmt(sellVal-lastSell)}</span>`
+        :`<span class="neutral">(0)</span>`;
     }
 
-    buyEl.innerText=fmt(buy);
-    sellEl.innerText=fmt(sell);
+    buy.innerText=fmt(buyVal);
+    sell.innerText=fmt(sellVal);
+    spread.innerText="Spread: "+fmt(buyVal-sellVal);
+    updateProfit(sellVal,buyVal);
 
-    buyDiff.innerHTML=
-      lastBuyDiff>0?`<span class="green">⬆ +${fmt(lastBuyDiff)}</span>`:
-      lastBuyDiff<0?`<span class="red">⬇ ${fmt(lastBuyDiff)}</span>`:
-      `<span class="neutral">(0)</span>`;
+    time.classList.remove("flash"); void time.offsetWidth; time.classList.add("flash");
 
-    sellDiff.innerHTML=
-      lastSellDiff>0?`<span class="green">⬆ +${fmt(lastSellDiff)}</span>`:
-      lastSellDiff<0?`<span class="red">⬇ ${fmt(lastSellDiff)}</span>`:
-      `<span class="neutral">(0)</span>`;
-
-    spread.innerText="Spread: "+fmt(buy-sell);
-    updateProfit(sell,buy);
-
-    // flash timestamp
-    const timeEl=document.getElementById("time");
-    timeEl.classList.remove("flash");
-    void timeEl.offsetWidth;
-    timeEl.classList.add("flash");
-
-    lastBuy=buy;
-    lastSell=sell;
-    adjustCardWidth();
-
-  }catch(e){
-    console.error("Gold error:",e);
+    lastBuy=buyVal;
+    lastSell=sellVal;
   }finally{
     isFetching=false;
   }
 }
 
 /* ================= POLLING ================= */
-const FAST_INTERVAL=200;
-const FAST_DURATION=5000; // 5 detik
-const NORMAL_INTERVAL=5000;
-
-function startNormal(){
-  clearInterval(poller);
-  poller=setInterval(loadGold,NORMAL_INTERVAL);
-}
-
-function startAggressive(){
-  clearInterval(poller);
-  poller=setInterval(loadGold,FAST_INTERVAL);
-  setTimeout(startNormal,FAST_DURATION);
-}
-
-// init
 loadGold();
-startAggressive();
+setInterval(loadGold,200);
 </script>
 
 </body>
