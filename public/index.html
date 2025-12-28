@@ -106,14 +106,14 @@ h1 {
 
 <script>
 /* =============================
-   KONFIGURASI POLLING
+// KONFIGURASI POLLING
 ============================= */
 const FAST_INTERVAL = 200;
-const FAST_DURATION = 4000;
+const FAST_DURATION = 4000; // 4 detik
 const NORMAL_INTERVAL = 5000;
 
 /* =============================
-   KONFIGURASI MODAL
+// KONFIGURASI MODAL
 ============================= */
 const nilaiEmas20 = 20000000;
 const modal20 = 20000000 - 685000;
@@ -122,7 +122,7 @@ const nilaiEmas30 = 30000000;
 const modal30 = 30000000 - 1020000;
 
 /* =============================
-   STATE
+// STATE
 ============================= */
 let poller = null;
 let isFetching = false;
@@ -132,9 +132,8 @@ let lastSell = null;
 let serverOffset = 0;
 
 /* =============================
-   UTIL
+// UTIL
 ============================= */
-// Format Rupiah + titik ribuan + koma desimal
 const fmt = n => {
   let parts = Number(n).toFixed(0).toString().split(".");
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -151,7 +150,7 @@ function formatTime(date){
 }
 
 /* =============================
-   JAM REALTIME DARI SERVER
+// JAM REALTIME DARI SERVER
 ============================= */
 async function syncServerTime(){
   try{
@@ -170,13 +169,12 @@ setInterval(()=>{
 },1000);
 
 /* =============================
-   PROFIT & SPREAD
+// PROFIT & SPREAD
 ============================= */
 function updateProfit(buy, sell){
   const spread = buy - sell;
   document.getElementById("spread").innerText = "Spread: " + fmt(spread);
 
-  // Profit 20jt
   const gram20 = nilaiEmas20 / buy;
   const profit20 = gram20 * sell - modal20;
   const gramProfit20 = profit20 / sell;
@@ -184,7 +182,6 @@ function updateProfit(buy, sell){
     "Profit 20jt: Rp " + fmt(profit20.toFixed(0)) + 
     " (" + gramProfit20.toFixed(4).replace(".", ",") + " gr)";
 
-  // Profit 30jt
   const gram30 = nilaiEmas30 / buy;
   const profit30 = gram30 * sell - modal30;
   const gramProfit30 = profit30 / sell;
@@ -194,7 +191,7 @@ function updateProfit(buy, sell){
 }
 
 /* =============================
-   FETCH GOLD
+// FETCH GOLD
 ============================= */
 async function loadGold(){
   if(isFetching) return;
@@ -244,24 +241,38 @@ async function loadGold(){
 }
 
 /* =============================
-   POLLING CONTROL
+// POLLING CONTROL
 ============================= */
-function startNormal(){
+function startFastPolling() {
+  clearInterval(poller);
+  poller = setInterval(loadGold, FAST_INTERVAL);
+  setTimeout(startNormalPolling, FAST_DURATION);
+}
+
+function startNormalPolling() {
   clearInterval(poller);
   poller = setInterval(loadGold, NORMAL_INTERVAL);
 }
 
-function startAggressive(){
-  clearInterval(poller);
-  poller = setInterval(loadGold, FAST_INTERVAL);
-  setTimeout(startNormal, FAST_DURATION);
+// Sinkronisasi polling tiap menit
+function syncPollingByMinute() {
+  const now = new Date();
+  const sec = now.getSeconds();
+
+  if(sec < 5){
+    // Masih detik 0-4, langsung fast polling
+    startFastPolling();
+  }else{
+    // Tunggu sampai detik 0 berikutnya
+    const msToNextMinute = (60 - sec) * 1000;
+    setTimeout(() => {
+      startFastPolling();
+    }, msToNextMinute);
+  }
 }
 
-/* =============================
-   INIT
-============================= */
-loadGold();
-startAggressive();
+// Panggil saat page load / refresh
+syncPollingByMinute();
 </script>
 </body>
 </html>
