@@ -60,6 +60,16 @@ h1 {
   to { transform:scale(1); opacity:1 }
 }
 
+/* ANIMASI TIMESTAMP */
+@keyframes flash {
+  0%   { background-color: rgba(255,255,0,0.2); }
+  50%  { background-color: rgba(255,255,0,0.5); }
+  100% { background-color: transparent; }
+}
+.flash {
+  animation: flash 0.5s ease-out;
+}
+
 #spread, #profit, #profit2 {
   margin-top:12px;
   text-align:center;
@@ -101,8 +111,8 @@ h1 {
    KONFIGURASI POLLING
 ============================= */
 const FAST_INTERVAL = 200;     // agresif
-const FAST_DURATION = 4000;   // 4 detik
-const NORMAL_INTERVAL = 5000; // ±720/jam
+const FAST_DURATION = 4000;    // 4 detik
+const NORMAL_INTERVAL = 5000;  // ±720/jam
 
 /* =============================
    KONFIGURASI MODAL
@@ -195,8 +205,12 @@ async function loadGold(){
 
     updateProfit(buy, sell);
 
-    document.getElementById("timestamp").innerText =
-      "Last update: " + formatTime(new Date(ts));
+    // update timestamp + animasi flash
+    const tsEl = document.getElementById("timestamp");
+    tsEl.innerText = "Last update: " + formatTime(new Date(ts));
+    tsEl.classList.remove("flash");
+    void tsEl.offsetWidth; // reset animasi
+    tsEl.classList.add("flash");
 
     lastBuy = buy;
     lastSell = sell;
