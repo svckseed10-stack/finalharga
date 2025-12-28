@@ -60,7 +60,7 @@ h1 {
   to { transform:scale(1); opacity:1 }
 }
 
-/* ANIMASI TIMESTAMP */
+/* Animasi timestamp */
 @keyframes flash {
   0%   { background-color: rgba(255,255,0,0.2); }
   50%  { background-color: rgba(255,255,0,0.5); }
@@ -131,6 +131,7 @@ let isFetching = false;
 let lastTimestamp = null;
 let lastBuy = null;
 let lastSell = null;
+let serverOffset = 0;
 
 /* =============================
    UTIL
@@ -147,10 +148,28 @@ function formatTime(date){
 }
 
 /* =============================
-   JAM REALTIME
+   JAM REALTIME DARI SERVER
 ============================= */
+async function syncServerTime(){
+  try{
+    const res = await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta");
+    const data = await res.json();
+    serverOffset = data.unixtime*1000 - Date.now();
+  }catch(e){
+    console.error("Gagal sync server time:", e);
+  }
+}
+
+// Hitung offset pertama kali
+syncServerTime();
+
+// Refresh offset setiap 5 menit
+setInterval(syncServerTime, 5*60*1000);
+
+// Update jam realtime setiap detik
 setInterval(()=>{
-  document.getElementById("time").innerText = formatTime(new Date());
+  const nowServer = Date.now() + serverOffset;
+  document.getElementById("time").innerText = formatTime(new Date(nowServer));
 },1000);
 
 /* =============================
