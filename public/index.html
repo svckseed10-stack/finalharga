@@ -41,16 +41,23 @@ h1 {
 .label { color:#aaa; font-size:13px }
 .value { font-size:22px; font-weight:700 }
 
+.diff { font-size:12px; margin-top:4px }
+
 .green { color:#4caf50 }
 .red { color:#ff6b6b }
+.neutral { color:#999 }
 
-.fade {
-  animation:pulse .25s ease-out;
-}
+.fade { animation:pulse .25s ease-out }
 
 @keyframes pulse {
   from { transform:scale(1.06); opacity:.3 }
   to { transform:scale(1); opacity:1 }
+}
+
+#spread, #profit, #profit2 {
+  margin-top:12px;
+  text-align:center;
+  font-weight:600;
 }
 </style>
 </head>
@@ -63,12 +70,18 @@ h1 {
   <div class="row">
     <div class="label">Buying</div>
     <div id="buy" class="value">-</div>
+    <div id="buyDiff" class="diff neutral">(0)</div>
   </div>
 
   <div class="row">
     <div class="label">Selling</div>
     <div id="sell" class="value">-</div>
+    <div id="sellDiff" class="diff neutral">(0)</div>
   </div>
+
+  <div id="spread">Spread: -</div>
+  <div id="profit">Profit 20jt: -</div>
+  <div id="profit2">Profit 30jt: -</div>
 
   <div id="timestamp">Last update: -</div>
 </div>
@@ -77,9 +90,18 @@ h1 {
 /* =============================
    KONFIGURASI POLLING
 ============================= */
-const FAST_INTERVAL = 200;      // agresif
-const FAST_DURATION = 4000;     // 4 detik
-const NORMAL_INTERVAL = 5000;   // normal (penentu 600–800/jam)
+const FAST_INTERVAL = 200;
+const FAST_DURATION = 4000;
+const NORMAL_INTERVAL = 5000;
+
+/* =============================
+   KONFIGURASI MODAL
+============================= */
+const nilaiEmas20 = 20000000;
+const modal20 = 20000000 - 685000;
+
+const nilaiEmas30 = 30000000;
+const modal30 = 30000000 - 1020000;
 
 /* =============================
    STATE
@@ -87,14 +109,16 @@ const NORMAL_INTERVAL = 5000;   // normal (penentu 600–800/jam)
 let poller = null;
 let isFetching = false;
 let lastTimestamp = null;
+let lastBuy = null;
+let lastSell = null;
 
 /* =============================
    UTIL
 ============================= */
-const format = n => Number(n).toLocaleString("id-ID");
+const fmt = n => Number(n).toLocaleString("id-ID");
 
 /* =============================
-   JAM WIB
+   JAM
 ============================= */
 setInterval(()=>{
   document.getElementById("time").innerText =
@@ -102,7 +126,25 @@ setInterval(()=>{
 },1000);
 
 /* =============================
-   FETCH GOLD
+   PROFIT
+============================= */
+function updateProfit(buy, sell){
+  document.getElementById("spread").innerText =
+    "Spread: " + fmt(buy - sell);
+
+  const gram20 = nilaiEmas20 / buy;
+  const profit20 = gram20 * sell - modal20;
+  document.getElementById("profit").innerText =
+    "Profit 20jt: Rp " + fmt(profit20.toFixed(0));
+
+  const gram30 = nilaiEmas30 / buy;
+  const profit30 = gram30 * sell - modal30;
+  document.getElementById("profit2").innerText =
+    "Profit 30jt: Rp " + fmt(profit30.toFixed(0));
+}
+
+/* =============================
+   FETCH
 ============================= */
 async function loadGold(){
   if(isFetching) return;
@@ -116,17 +158,31 @@ async function loadGold(){
     if(lastTimestamp && ts <= lastTimestamp) return;
     lastTimestamp = ts;
 
+    const buy = Number(d.buying_rate);
+    const sell = Number(d.selling_rate);
+
     const buyEl = document.getElementById("buy");
     const sellEl = document.getElementById("sell");
 
-    buyEl.classList.add("fade");
-    sellEl.classList.add("fade");
+    buyEl.classList.remove("green","red","fade");
+    sellEl.classList.remove("green","red","fade");
 
-    buyEl.innerText = format(d.buying_rate);
-    sellEl.innerText = format(d.selling_rate);
+    if(lastBuy !== null){
+      buyEl.classList.add(buy > lastBuy ? "green" : "red","fade");
+      sellEl.classList.add(sell > lastSell ? "green" : "red","fade");
+    }
+
+    buyEl.innerText = fmt(buy);
+    sellEl.innerText = fmt(sell);
+
+    updateProfit(buy, sell);
 
     document.getElementById("timestamp").innerText =
-      "Last update: " + new Date(ts).toLocaleTimeString("id-ID",{hour12:false});
+      "Last update: " +
+      new Date(ts).toLocaleTimeString("id-ID",{hour12:false});
+
+    lastBuy = buy;
+    lastSell = sell;
 
   }catch(e){
     console.error(e);
@@ -146,17 +202,14 @@ function startNormal(){
 function startAggressive(){
   clearInterval(poller);
   poller = setInterval(loadGold, FAST_INTERVAL);
-
-  setTimeout(()=>{
-    startNormal();
-  }, FAST_DURATION);
+  setTimeout(startNormal, FAST_DURATION);
 }
 
 /* =============================
-   INIT (PAGE LOAD / REFRESH)
+   INIT
 ============================= */
-loadGold();        // fetch langsung
-startAggressive(); // agresif hanya di awal
+loadGold();
+startAggressive();
 </script>
 </body>
 </html>
