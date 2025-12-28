@@ -65,6 +65,7 @@ h1 {
   50%  { background-color: rgba(255,255,0,0.5); }
   100% { background-color: transparent; }
 }
+
 .flash {
   animation: flash 0.5s ease-out;
 }
@@ -90,13 +91,11 @@ h1 {
   <div class="row">
     <div class="label">Buying</div>
     <div id="buy" class="value">-</div>
-    <div id="buyDiff" class="diff neutral">(0)</div>
   </div>
 
   <div class="row">
     <div class="label">Selling</div>
     <div id="sell" class="value">-</div>
-    <div id="sellDiff" class="diff neutral">(0)</div>
   </div>
 
   <div id="spread">Spread: -</div>
@@ -106,20 +105,17 @@ h1 {
 
 <script>
 /* =============================
-// KONFIGURASI POLLING
+// CONFIG
 ============================= */
-const FAST_INTERVAL = 200;
-const FAST_DURATION = 4000; // 4 detik
-const NORMAL_INTERVAL = 5000;
+const FAST_INTERVAL = 200;     // 200ms
+const FAST_DURATION = 4000;    // 4 detik
+const NORMAL_INTERVAL = 5000;  // 5 detik
 
-/* =============================
-// KONFIGURASI MODAL
-============================= */
 const nilaiEmas20 = 20000000;
-const modal20 = 20000000 - 685000;
+const modal20 = nilaiEmas20 - 685000;
 
 const nilaiEmas30 = 30000000;
-const modal30 = 30000000 - 1020000;
+const modal30 = nilaiEmas30 - 1020000;
 
 /* =============================
 // STATE
@@ -135,13 +131,11 @@ let serverOffset = 0;
 // UTIL
 ============================= */
 const fmt = n => {
-  let parts = Number(n).toFixed(0).toString().split(".");
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return parts.join(",");
+  return Number(n).toLocaleString("id-ID");
 };
 
-function formatTime(date){
-  return date.toLocaleTimeString("id-ID",{
+function formatTime(d){
+  return d.toLocaleTimeString("id-ID", {
     hour12:false,
     hour:"2-digit",
     minute:"2-digit",
@@ -150,44 +144,40 @@ function formatTime(date){
 }
 
 /* =============================
-// JAM REALTIME DARI SERVER
+// SERVER TIME
 ============================= */
 async function syncServerTime(){
   try{
-    const res = await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta");
-    const data = await res.json();
-    serverOffset = data.unixtime*1000 - Date.now();
-  }catch(e){
-    console.error("Gagal sync server time:", e);
-  }
+    const r = await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta");
+    const d = await r.json();
+    serverOffset = d.unixtime * 1000 - Date.now();
+  }catch(e){}
 }
+
 syncServerTime();
-setInterval(syncServerTime, 5*60*1000);
-setInterval(()=>{
-  const nowServer = Date.now() + serverOffset;
-  document.getElementById("time").innerText = formatTime(new Date(nowServer));
-},1000);
+setInterval(syncServerTime, 5 * 60 * 1000);
+
+setInterval(() => {
+  const now = new Date(Date.now() + serverOffset);
+  document.getElementById("time").innerText = formatTime(now);
+}, 1000);
 
 /* =============================
-// PROFIT & SPREAD
+// PROFIT
 ============================= */
 function updateProfit(buy, sell){
-  const spread = buy - sell;
-  document.getElementById("spread").innerText = "Spread: " + fmt(spread);
+  document.getElementById("spread").innerText =
+    "Spread: " + fmt(buy - sell);
 
   const gram20 = nilaiEmas20 / buy;
   const profit20 = gram20 * sell - modal20;
-  const gramProfit20 = profit20 / sell;
   document.getElementById("profit").innerText =
-    "Profit 20jt: Rp " + fmt(profit20.toFixed(0)) + 
-    " (" + gramProfit20.toFixed(4).replace(".", ",") + " gr)";
+    "Profit 20jt: Rp " + fmt(profit20.toFixed(0));
 
   const gram30 = nilaiEmas30 / buy;
   const profit30 = gram30 * sell - modal30;
-  const gramProfit30 = profit30 / sell;
   document.getElementById("profit2").innerText =
-    "Profit 30jt: Rp " + fmt(profit30.toFixed(0)) + 
-    " (" + gramProfit30.toFixed(4).replace(".", ",") + " gr)";
+    "Profit 30jt: Rp " + fmt(profit30.toFixed(0));
 }
 
 /* =============================
@@ -202,17 +192,20 @@ async function loadGold(){
     const d = await r.json();
 
     const ts = new Date(d.updated_at.replace(" ","T")).getTime();
-    if(lastTimestamp && ts <= lastTimestamp) return;
+    if(lastTimestamp && ts <= lastTimestamp){
+      isFetching = false;
+      return;
+    }
     lastTimestamp = ts;
 
-    const buy = Number(d.buying_rate);
-    const sell = Number(d.selling_rate);
+    const buy = +d.buying_rate;
+    const sell = +d.selling_rate;
 
     const buyEl = document.getElementById("buy");
     const sellEl = document.getElementById("sell");
 
-    buyEl.classList.remove("green","red","fade");
-    sellEl.classList.remove("green","red","fade");
+    buyEl.className = "value";
+    sellEl.className = "value";
 
     if(lastBuy !== null){
       buyEl.classList.add(buy > lastBuy ? "green" : "red","fade");
@@ -241,38 +234,36 @@ async function loadGold(){
 }
 
 /* =============================
-// POLLING CONTROL
+// POLLING
 ============================= */
-function startFastPolling() {
+function startFastPolling(){
   clearInterval(poller);
+  loadGold(); // langsung fetch
   poller = setInterval(loadGold, FAST_INTERVAL);
   setTimeout(startNormalPolling, FAST_DURATION);
 }
 
-function startNormalPolling() {
+function startNormalPolling(){
   clearInterval(poller);
   poller = setInterval(loadGold, NORMAL_INTERVAL);
 }
 
-// Sinkronisasi polling tiap menit
-function syncPollingByMinute() {
-  const now = new Date();
+function scheduleNextMinute(){
+  const now = new Date(Date.now() + serverOffset);
   const sec = now.getSeconds();
+  const ms = (60 - sec) * 1000;
 
-  if(sec < 5){
-    // Masih detik 0-4, langsung fast polling
-    startFastPolling();
-  }else{
-    // Tunggu sampai detik 0 berikutnya
-    const msToNextMinute = (60 - sec) * 1000;
-    setTimeout(() => {
-      startFastPolling();
-    }, msToNextMinute);
-  }
+  setTimeout(() => {
+    startFastPolling();       // detik 00 → 200ms
+    scheduleNextMinute();     // loop tiap menit
+  }, ms + 10);
 }
 
-// Panggil saat page load / refresh
-syncPollingByMinute();
+/* =============================
+// START
+============================= */
+startFastPolling();      // ✅ buka / refresh langsung 200ms
+scheduleNextMinute();    // ✅ setiap menit detik 00
 </script>
 </body>
 </html>
