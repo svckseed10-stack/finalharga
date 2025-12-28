@@ -60,7 +60,6 @@ h1 {
   to { transform:scale(1); opacity:1 }
 }
 
-/* Animasi timestamp */
 @keyframes flash {
   0%   { background-color: rgba(255,255,0,0.2); }
   50%  { background-color: rgba(255,255,0,0.5); }
@@ -82,7 +81,6 @@ h1 {
 <div class="card">
   <h1>Realtime Gold Price</h1>
 
-  <!-- TIME + TIMESTAMP -->
   <div class="timebar">
     <span id="time">--.--.--</span>
     <span class="separator">|</span>
@@ -110,9 +108,9 @@ h1 {
 /* =============================
    KONFIGURASI POLLING
 ============================= */
-const FAST_INTERVAL = 200;     // agresif
-const FAST_DURATION = 4000;    // 4 detik
-const NORMAL_INTERVAL = 5000;  // ±720/jam
+const FAST_INTERVAL = 200;
+const FAST_DURATION = 4000;
+const NORMAL_INTERVAL = 5000;
 
 /* =============================
    KONFIGURASI MODAL
@@ -136,7 +134,12 @@ let serverOffset = 0;
 /* =============================
    UTIL
 ============================= */
-const fmt = n => Number(n).toLocaleString("id-ID");
+// Format Rupiah + titik ribuan + koma desimal
+const fmt = n => {
+  let parts = Number(n).toFixed(0).toString().split(".");
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return parts.join(",");
+};
 
 function formatTime(date){
   return date.toLocaleTimeString("id-ID",{
@@ -159,14 +162,8 @@ async function syncServerTime(){
     console.error("Gagal sync server time:", e);
   }
 }
-
-// Hitung offset pertama kali
 syncServerTime();
-
-// Refresh offset setiap 5 menit
 setInterval(syncServerTime, 5*60*1000);
-
-// Update jam realtime setiap detik
 setInterval(()=>{
   const nowServer = Date.now() + serverOffset;
   document.getElementById("time").innerText = formatTime(new Date(nowServer));
@@ -176,18 +173,24 @@ setInterval(()=>{
    PROFIT & SPREAD
 ============================= */
 function updateProfit(buy, sell){
-  document.getElementById("spread").innerText =
-    "Spread: " + fmt(buy - sell);
+  const spread = buy - sell;
+  document.getElementById("spread").innerText = "Spread: " + fmt(spread);
 
+  // Profit 20jt
   const gram20 = nilaiEmas20 / buy;
   const profit20 = gram20 * sell - modal20;
+  const gramProfit20 = profit20 / sell;
   document.getElementById("profit").innerText =
-    "Profit 20jt: Rp " + fmt(profit20.toFixed(0));
+    "Profit 20jt: Rp " + fmt(profit20.toFixed(0)) + 
+    " (" + gramProfit20.toFixed(4).replace(".", ",") + " gr)";
 
+  // Profit 30jt
   const gram30 = nilaiEmas30 / buy;
   const profit30 = gram30 * sell - modal30;
+  const gramProfit30 = profit30 / sell;
   document.getElementById("profit2").innerText =
-    "Profit 30jt: Rp " + fmt(profit30.toFixed(0));
+    "Profit 30jt: Rp " + fmt(profit30.toFixed(0)) + 
+    " (" + gramProfit30.toFixed(4).replace(".", ",") + " gr)";
 }
 
 /* =============================
@@ -224,11 +227,10 @@ async function loadGold(){
 
     updateProfit(buy, sell);
 
-    // update timestamp + animasi flash
     const tsEl = document.getElementById("timestamp");
     tsEl.innerText = "Last update: " + formatTime(new Date(ts));
     tsEl.classList.remove("flash");
-    void tsEl.offsetWidth; // reset animasi
+    void tsEl.offsetWidth;
     tsEl.classList.add("flash");
 
     lastBuy = buy;
