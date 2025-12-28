@@ -1,41 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Realtime Gold Price (WIB)</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:Arial,sans-serif;
+  background:#111;
+  color:#fff;
+  height:100vh;
+  overflow:hidden
+}
+.card{
+  background:#1a1a1a;
+  padding:20px;
+  border-radius:12px;
+  margin:20px auto 0 auto;
+  box-shadow:0 8px 30px rgba(0,0,0,.6);
+  border:1px solid #222;
+  text-align:center;
+  position:relative;
+  z-index:10
+}
+h1{font-size:18px;margin-bottom:10px}
+.time{color:#bbb;font-size:13px;margin-bottom:12px}
+.row{margin:12px 0}
+.label{color:#aaa;font-size:13px}
+.value{font-size:22px;font-weight:700}
+.diff{font-size:12px;margin-top:4px}
+.green{color:#4caf50}
+.red{color:#ff6b6b}
+.neutral{color:#999}
+.fade{animation:pulse .25s ease-out}
+@keyframes pulse{
+  from{transform:scale(1.06);opacity:.2}
+  to{transform:scale(1);opacity:1}
+}
+#spread,#profit,#profit2{margin-top:14px;font-weight:600}
+#spread{color:#f0e68c}
+.flash{animation:flash 0.5s ease-out}
+@keyframes flash{
+  0%{background-color:rgba(255,255,0,0.2)}
+  50%{background-color:rgba(255,255,0,0.5)}
+  100%{background-color:transparent}
+}
+#chartWrapper{
+  position:absolute;
+  left:0;right:0;bottom:0;
+  width:100%;
+  z-index:0
+}
+</style>
+</head>
+
+<body>
+
+<div class="card" id="goldCard">
+  <h1>Realtime Gold Price</h1>
+  <div id="time" class="time">--:--:-- | Last update: --:--:--</div>
+
+  <div class="row">
+    <div class="label">Buying Rate</div>
+    <div id="buy" class="value">Loading...</div>
+    <div id="buyDiff" class="diff neutral">(0)</div>
+  </div>
+
+  <div class="row">
+    <div class="label">Selling Rate</div>
+    <div id="sell" class="value">Loading...</div>
+    <div id="sellDiff" class="diff neutral">(0)</div>
+  </div>
+
+  <div id="spread">Spread: -</div>
+  <div id="profit">Profit 20jt: -</div>
+  <div id="profit2">Profit 30jt: -</div>
+</div>
+
 <script>
-/* =============================
-// FORMAT NUMBER (SAMA SEPERTI AWAL)
-============================= */
-function fmtRp(n){
-  let parts = Number(n).toFixed(3).split(".");
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return parts.join(",");
+/* ================= LAYOUT ================= */
+function adjustCardWidth(){
+  const chart=document.getElementById("chartWrapper");
+  const card=document.getElementById("goldCard");
+  card.style.width=chart.offsetWidth+"px";
+  const h=card.offsetHeight+20;
+  chart.style.top=h+"px";
+  chart.style.height=`calc(100vh - ${h}px)`;
+}
+window.addEventListener("load",adjustCardWidth);
+window.addEventListener("resize",adjustCardWidth);
+
+/* ================= PROFIT ================= */
+const nilai20=20000000, modal20=nilai20-685000;
+const nilai30=30000000, modal30=nilai30-1020000;
+
+const fmt=n=>n.toLocaleString("id-ID");
+const fmt4=n=>n.toLocaleString("id-ID",{minimumFractionDigits:4});
+
+function hitung(sell,buy,nilai,modal){
+  const gram=nilai/buy;
+  const jual=gram*sell;
+  const profit=jual-modal;
+  return{profit,gram,profitGram:profit/sell};
+}
+function updateProfit(sell,buy){
+  const a=hitung(sell,buy,nilai20,modal20);
+  const b=hitung(sell,buy,nilai30,modal30);
+  document.getElementById("profit").innerHTML=`Profit 20jt: Rp ${fmt(a.profit)} (${fmt4(a.profitGram)} gr)`;
+  document.getElementById("profit2").innerHTML=`Profit 30jt: Rp ${fmt(b.profit)} (${fmt4(b.profitGram)} gr)`;
 }
 
-function fmtInt(n){
-  return Number(n).toLocaleString("id-ID");
+/* ================= WAKTU SERVER ================= */
+let offset=0;
+async function syncTime(){
+  try{
+    const r=await fetch("https://worldtimeapi.org/api/timezone/Asia/Jakarta",{cache:"no-store"});
+    const d=await r.json();
+    offset=d.unixtime*1000-Date.now();
+  }catch(e){
+    console.error("Gagal sync waktu server:",e);
+  }
+}
+syncTime();
+setInterval(syncTime,5*60*1000);
+
+function clock(){
+  const now=new Date(Date.now()+offset);
+  document.getElementById("time").innerText=now.toLocaleTimeString("id-ID",{hour12:false}) + 
+    " | Last update: " + (lastTimestamp ? new Date(lastTimestamp).toLocaleTimeString("id-ID",{hour12:false}) : "--:--:--");
+}
+setInterval(clock,1000);
+
+/* ================= GOLD ================= */
+let lastBuy=null,lastSell=null;
+let lastBuyDiff=0,lastSellDiff=0;
+let lastTimestamp=null;
+
+const buyEl=document.getElementById("buy");
+const sellEl=document.getElementById("sell");
+const buyDiff=document.getElementById("buyDiff");
+const sellDiff=document.getElementById("sellDiff");
+const spread=document.getElementById("spread");
+
+let isFetching=false;
+let poller=null;
+
+/* ================= FETCH GOLD ================= */
+async function loadGold(){
+  if(isFetching) return;
+  isFetching=true;
+
+  try{
+    const r=await fetch("/api/gold",{cache:"no-store"});
+    const d=await r.json();
+    if(!d.updated_at) return;
+
+    const buy=Number(d.buying_rate);
+    const sell=Number(d.selling_rate);
+    const ts=new Date(d.updated_at.replace(" ","T")).getTime();
+
+    if(lastTimestamp && ts<=lastTimestamp) return;
+    lastTimestamp=ts;
+
+    buyEl.classList.remove("green","red","fade");
+    sellEl.classList.remove("green","red","fade");
+
+    if(lastBuy!==null){
+      lastBuyDiff=buy-lastBuy;
+      if(lastBuyDiff!==0) buyEl.classList.add(lastBuyDiff>0?"green":"red","fade");
+    }
+    if(lastSell!==null){
+      lastSellDiff=sell-lastSell;
+      if(lastSellDiff!==0) sellEl.classList.add(lastSellDiff>0?"green":"red","fade");
+    }
+
+    buyEl.innerText=fmt(buy);
+    sellEl.innerText=fmt(sell);
+
+    buyDiff.innerHTML=
+      lastBuyDiff>0?`<span class="green">⬆ +${fmt(lastBuyDiff)}</span>`:
+      lastBuyDiff<0?`<span class="red">⬇ ${fmt(lastBuyDiff)}</span>`:
+      `<span class="neutral">(0)</span>`;
+
+    sellDiff.innerHTML=
+      lastSellDiff>0?`<span class="green">⬆ +${fmt(lastSellDiff)}</span>`:
+      lastSellDiff<0?`<span class="red">⬇ ${fmt(lastSellDiff)}</span>`:
+      `<span class="neutral">(0)</span>`;
+
+    spread.innerText="Spread: "+fmt(buy-sell);
+    updateProfit(sell,buy);
+
+    // flash timestamp
+    const timeEl=document.getElementById("time");
+    timeEl.classList.remove("flash");
+    void timeEl.offsetWidth;
+    timeEl.classList.add("flash");
+
+    lastBuy=buy;
+    lastSell=sell;
+    adjustCardWidth();
+
+  }catch(e){
+    console.error("Gold error:",e);
+  }finally{
+    isFetching=false;
+  }
 }
 
-/* =============================
-// PROFIT & SPREAD (FORMAT ASLI)
-============================= */
-function updateProfit(buy, sell){
-  const spread = buy - sell;
-  document.getElementById("spread").innerText =
-    "Spread: " + fmtInt(spread);
+/* ================= POLLING ================= */
+const FAST_INTERVAL=200;
+const FAST_DURATION=5000; // 5 detik
+const NORMAL_INTERVAL=5000;
 
-  // ===== 20 JT =====
-  const gram20 = nilaiEmas20 / buy;
-  const profit20 = gram20 * sell - modal20;
-  const gramProfit20 = profit20 / sell;
-
-  document.getElementById("profit").innerText =
-    "Profit 20jt: Rp " + fmtRp(profit20) +
-    " (" + gramProfit20.toFixed(4).replace(".", ",") + " gr)";
-
-  // ===== 30 JT =====
-  const gram30 = nilaiEmas30 / buy;
-  const profit30 = gram30 * sell - modal30;
-  const gramProfit30 = profit30 / sell;
-
-  document.getElementById("profit2").innerText =
-    "Profit 30jt: Rp " + fmtRp(profit30) +
-    " (" + gramProfit30.toFixed(4).replace(".", ",") + " gr)";
+function startNormal(){
+  clearInterval(poller);
+  poller=setInterval(loadGold,NORMAL_INTERVAL);
 }
+
+function startFast(){
+  clearInterval(poller);
+  poller=setInterval(loadGold,FAST_INTERVAL);
+  setTimeout(startNormal,FAST_DURATION);
+}
+
+// Sinkronisasi polling tiap menit
+function syncPollingByMinute(){
+  const now=new Date(Date.now()+offset);
+  const sec=now.getSeconds();
+
+  if(sec<5){
+    // Detik 0-4: langsung fast polling
+    startFast();
+  }else{
+    // Tunggu sampai detik 0 berikutnya
+    const msToNextMinute=(60-sec)*1000;
+    setTimeout(()=>startFast(),msToNextMinute);
+  }
+}
+
+// Init saat page load
+loadGold();
+syncPollingByMinute();
+
 </script>
+
+</body>
+</html>
