@@ -79,6 +79,11 @@ h1{font-size:18px;margin-bottom:10px}
   <div id="profit2">Profit 30jt: -</div>
 </div>
 
+<!-- Menghilangkan chart TradingView -->
+<div id="chartWrapper">
+  <!-- Tidak ada lagi div untuk chart -->
+</div>
+
 <script>
 /* ================= LAYOUT ================= */
 function adjustCardWidth(){
@@ -219,31 +224,15 @@ function startNormal(){
   poller=setInterval(loadGold,NORMAL_INTERVAL);
 }
 
-function startFast(){
+function startAggressive(){
   clearInterval(poller);
   poller=setInterval(loadGold,FAST_INTERVAL);
   setTimeout(startNormal,FAST_DURATION);
 }
 
-// Sinkronisasi polling tiap menit
-function syncPollingByMinute(){
-  const now=new Date(Date.now()+offset);
-  const sec=now.getSeconds();
-
-  if(sec<5){
-    // Detik 0-4: langsung fast polling
-    startFast();
-  }else{
-    // Tunggu sampai detik 0 berikutnya
-    const msToNextMinute=(60-sec)*1000;
-    setTimeout(()=>startFast(),msToNextMinute);
-  }
-}
-
-// Init saat page load
+// init
 loadGold();
-syncPollingByMinute();
-
+startAggressive();
 </script>
 
 </body>
